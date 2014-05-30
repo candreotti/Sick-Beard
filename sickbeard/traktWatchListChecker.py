@@ -266,7 +266,7 @@ class TraktChecker():
                     				self.todoWanted.append(int(tvdb_id), s, e)
 				else:
 					logger.log(u"Changed episode to archived: S" + str(s) + "E"+  str(e), logger.DEBUG)
-       	        			self.setEpisodeToArchived(newShow, s, e)
+       	        			self.setEpisodeToIgnored(newShow, s, e)
 					if self.episode_in_watchlist(newShow.tvdbid, s, e):
 						if not self.update_watchlist("episode", "remove", newShow.tvdbid, s, e):
                                                     return False
@@ -348,7 +348,7 @@ class TraktChecker():
 	    if not self.update_watchlist("show", "add", tvdbid, 0, 0):
                 return False
 
-    def setEpisodeToArchived(self, show, s, e):
+    def setEpisodeToIgnored(self, show, s, e):
         """
         Sets an episode to archived, only is it is currently skipped or Downloadable
         """
@@ -360,7 +360,7 @@ class TraktChecker():
                 return
             logger.log(u"Setting episode s"+str(s)+"e"+str(e)+" of show " + show.name + " to archived")
 
-            epObj.status = ARCHIVED
+            epObj.status = IGNORED
             epObj.saveToDB()
 
 
