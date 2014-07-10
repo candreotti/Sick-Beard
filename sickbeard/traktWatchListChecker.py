@@ -65,6 +65,7 @@ class TraktChecker():
             self.addEpisodeToWatchList()
             self.addShowToWatchList()
 
+
     def _getEpisodeWatchlist(self):
         
         self.EpisodeWatchlist = TraktCall("user/watchlist/episodes.json/%API%/" + sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_API, sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_PASSWORD)
@@ -361,9 +362,9 @@ class TraktChecker():
                 if not self.update_watchlist("show", "add", imdb_id, 0, 0):
                     return False
 
-    def setEpisodeToArchived(self, show, s, e):
+    def setEpisodeToIgnored(self, show, s, e):
         """
-        Sets an episode to archived, only is it is currently skipped or Downloadable
+        Sets an episode to ignored, only is it is currently skipped or Downloadable
         """
         epObj = show.getEpisode(int(s), int(e))
         if epObj == None:
@@ -371,9 +372,9 @@ class TraktChecker():
         with epObj.lock:
             if epObj.status not in (SKIPPED, DOWNLOADABLE, FAILED):
                 return
-            logger.log(u"Setting episode s"+str(s)+"e"+str(e)+" of show " + show.name + " to archived")
+            logger.log(u"Setting episode s"+str(s)+"e"+str(e)+" of show " + show.name + " to ignored")
 
-            epObj.status = ARCHIVED
+            epObj.status = IGNORED
             epObj.saveToDB()
 
 
