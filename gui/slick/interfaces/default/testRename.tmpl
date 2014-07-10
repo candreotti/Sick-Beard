@@ -2,7 +2,7 @@
 #from sickbeard import common
 #from sickbeard import exceptions
 #set global $title="Test Rename"
-#set global $header = '<a style="color: #343434;" href="' + $sbRoot + '/home/displayShow?show=%d">%s</a>' % ($show.tvdbid, $show.name)
+#set global $header = '<a style="color: #343434;" href="' + $sbRoot + '/home/displayShow?show=%d">%s</a>' % ($show.indexerid, $show.name)
 #set global $sbPath=".."
 
 #set global $topmenu="home"#
@@ -15,7 +15,7 @@
 	<h1 class="title">$title</h1>
 #end if
 
-<input type="hidden" id="showID" value="$show.tvdbid" />
+<input type="hidden" id="showID" value="$show.indexerid" />
 
 <script type="text/javascript" src="$sbRoot/js/testRename.js"></script>
 
@@ -23,6 +23,8 @@
 <blockquote style="margin-bottom: 0; color: #3A87AD;">
 #if int($show.air_by_date) == 1 and $sickbeard.NAMING_CUSTOM_ABD:
     $sickbeard.NAMING_ABD_PATTERN
+#elif int($show.sports) == 1 and $sickbeard.NAMING_CUSTOM_SPORTS:
+    $sickbeard.NAMING_SPORTS_PATTERN
 #else
     $sickbeard.NAMING_PATTERN
 #end if

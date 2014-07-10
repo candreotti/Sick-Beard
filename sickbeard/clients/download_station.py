@@ -1,4 +1,4 @@
-# Authors: 
+# Authors:
 # Pedro Jose Pereira Vieito <pvieito@gmail.com> (Twitter: @pvieito)
 #
 # URL: https://github.com/gborri/Sick-Beard
@@ -24,37 +24,37 @@ import sickbeard
 from sickbeard.clients.generic import GenericClient
 
 class DownloadStationAPI(GenericClient):
-    
+
     def __init__(self, host=None, username=None, password=None):
-                
+
         super(DownloadStationAPI, self).__init__('DownloadStation', host, username, password)
 
         self.url = self.host + 'webapi/DownloadStation/task.cgi'
-    
+
     def _get_auth(self):
-        
+
         auth_url = self.host + 'webapi/auth.cgi?api=SYNO.API.Auth&version=2&method=login&account=' + self.username + '&passwd=' + self.password + '&session=DownloadStation&format=sid'
-        
+
         try:
             self.response = self.session.get(auth_url)
             self.auth = self.response.json()['data']['sid']
         except:
             return None
-        
+
         return self.auth
-            
+
     def _add_torrent_uri(self, result):
-        
-        data = {'api':'SYNO.DownloadStation.Task', 
-                'version':'1', 'method':'create', 
-                'session':'DownloadStation', 
-                '_sid':self.auth, 
+
+        data = {'api':'SYNO.DownloadStation.Task',
+                'version':'1', 'method':'create',
+                'session':'DownloadStation',
+                '_sid':self.auth,
                 'uri':result.url
                 }
         self._request(method='post', data=data)
-        
+
         return self.response.json()['success']
-    
+
     def _add_torrent_file(self, result):
 
         data = {'api':'SYNO.DownloadStation.Task',
@@ -65,7 +65,7 @@ class DownloadStationAPI(GenericClient):
                 }
         files = {'file':(result.name + '.torrent', result.content)}
         self._request(method='post', data=data, files=files)
-        
+
         return self.response.json()['success']
 
 api = DownloadStationAPI()

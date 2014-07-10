@@ -31,6 +31,7 @@ import prowl
 from . import libnotify
 import pushover
 import boxcar
+import boxcar2
 import nma
 import pushalot
 import pushbullet
@@ -55,6 +56,7 @@ prowl_notifier = prowl.ProwlNotifier()
 libnotify_notifier = libnotify.LibnotifyNotifier()
 pushover_notifier = pushover.PushoverNotifier()
 boxcar_notifier = boxcar.BoxcarNotifier()
+boxcar2_notifier = boxcar2.Boxcar2Notifier()
 nma_notifier = nma.NMA_Notifier()
 pushalot_notifier = pushalot.PushalotNotifier()
 pushbullet_notifier = pushbullet.PushbulletNotifier()
@@ -64,7 +66,7 @@ trakt_notifier = trakt.TraktNotifier()
 email_notifier = emailnotify.EmailNotifier()
 
 notifiers = [
-    libnotify_notifier, # Libnotify notifier goes first because it doesn't involve blocking on network activity.
+    libnotify_notifier,  # Libnotify notifier goes first because it doesn't involve blocking on network activity.
     xbmc_notifier,
     plex_notifier,
     nmj_notifier,
@@ -76,6 +78,7 @@ notifiers = [
     prowl_notifier,
     pushover_notifier,
     boxcar_notifier,
+    boxcar2_notifier,
     nma_notifier,
     pushalot_notifier,
     pushbullet_notifier,
@@ -96,6 +99,7 @@ def notify_downloadable(ep_name):
 def notify_subtitle_download(ep_name, lang):
     for n in notifiers:
         n.notify_subtitle_download(ep_name, lang)
+
 
 def notify_snatch(ep_name):
     for n in notifiers:

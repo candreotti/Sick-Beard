@@ -18,7 +18,6 @@
 
 from sickbeard.encodingKludge import fixStupidEncodings
 
-
 def ex(e):
     """
     Returns a unicode string from the exception text if it exists.
@@ -93,19 +92,15 @@ class WrongShowException(SickBeardException):
 
 
 class ShowNotFoundException(SickBeardException):
-    "The show wasn't found on theTVDB"
+    "The show wasn't found on the Indexer"
 
 
 class EpisodeNotFoundException(SickBeardException):
-    "The episode wasn't found on theTVDB"
+    "The episode wasn't found on the Indexer"
 
 
 class NewzbinAPIThrottled(SickBeardException):
     "Newzbin has throttled us, deal with it"
-
-
-class TVRageException(SickBeardException):
-    "TVRage API did something bad"
 
 
 class ShowDirNotFoundException(SickBeardException):

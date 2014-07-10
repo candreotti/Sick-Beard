@@ -5,8 +5,8 @@ $(document).ready(function () {
             return;
         }
 
-        if ($('#tvdbLangSelect option').length <= 1) {
-            $.getJSON(sbRoot + '/home/addShows/getTVDBLanguages', {}, function (data) {
+        if ($('#indexerLangSelect option').length <= 1) {
+            $.getJSON(sbRoot + '/home/addShows/getIndexerLanguages', {}, function (data) {
                 var selected, resultStr = '';
 
                 if (data.results.length === 0) {
@@ -23,63 +23,85 @@ $(document).ready(function () {
                     });
                 }
 
-                $('#tvdbLangSelect').html(resultStr);
-                $('#tvdbLangSelect').change(function () { searchTvdb(); });
+                $('#indexerLangSelect').html(resultStr);
+                $('#indexerLangSelect').change(function () { searchIndexers(); });
             });
         }
     }
 
-    function searchTvdb() {
+    var searchRequestXhr = null;
+
+    function searchIndexers() {
         if (!$('#nameToSearch').val().length) {
             return;
         }
 
-        $('#searchResults').html('<img id="searchingAnim" src="' + sbRoot + '/images/loading32.gif" height="32" width="32" /> searching...');
+        if (searchRequestXhr) searchRequestXhr.abort();
 
-        $.getJSON(sbRoot + '/home/addShows/searchTVDBForShowName', {'name': $('#nameToSearch').val(), 'lang': $('#tvdbLangSelect').val()}, function (data) {
-            var firstResult = true;
-            var resultStr = '<fieldset>\n<legend>Search Results:</legend>\n';
-            var checked = '';
+        var searchingFor = $('#nameToSearch').val() + ' on ' + $('#providedIndexer option:selected').text() + ' in ' + $('#indexerLangSelect').val();
+        $('#searchResults').empty().html('<img id="searchingAnim" src="' + sbRoot + '/images/loading32.gif" height="32" width="32" /> searching ' + searchingFor + '...');
 
-            if (data.results.length === 0) {
-                resultStr += '<b>No results found, try a different search.</b>';
-            } else {
-                $.each(data.results, function (index, obj) {
-                    if (firstResult) {
-                        checked = ' checked';
-                        firstResult = false;
-                    } else {
-                        checked = '';
-                    }
-                    resultStr += '<input type="radio" id="whichSeries" name="whichSeries" value="' + obj[0] + '|' + obj[1] + '"' + checked + ' /> ';
-                    if (data.langid && data.langid != "") {
-                        resultStr += '<a href="http://thetvdb.com/?tab=series&id=' + obj[0] + '&lid=' + data.langid + '" onclick=\"window.open(this.href, \'_blank\'); return false;\" ><b>' + obj[1] + '</b></a>';
-                    } else {
-                        resultStr += '<a href="http://thetvdb.com/?tab=series&id=' + obj[0] + '" onclick=\"window.open(this.href, \'_blank\'); return false;\" ><b>' + obj[1] + '</b></a>';
-                    }
+        searchRequestXhr = $.ajax({
+            url: sbRoot + '/home/addShows/searchIndexersForShowName',
+            data: {'search_term': $('#nameToSearch').val(), 'lang': $('#indexerLangSelect').val(), 'indexer': $('#providedIndexer').val()},
+            timeout: parseInt($('#indexer_timeout').val(), 10) * 1000,
+            dataType: 'json',
+            error: function () {
+                $('#searchResults').empty().html('search timed out, try again or try another indexer');
+            },
+            success: function (data) {
+                var firstResult = true;
+                var resultStr = '<fieldset>\n<legend>Search Results:</legend>\n';
+                var checked = '';
 
-                    if (obj[2] !== null) {
-                        var startDate = new Date(obj[2]);
-                        var today = new Date();
-                        if (startDate > today) {
-                            resultStr += ' (will debut on ' + obj[2] + ')';
+                if (data.results.length === 0) {
+                    resultStr += '<b>No results found, try a different search.</b>';
+                } else {
+                    $.each(data.results, function (index, obj) {
+                        if (firstResult) {
+                            checked = ' checked';
+                            firstResult = false;
                         } else {
-                            resultStr += ' (started on ' + obj[2] + ')';
+                            checked = '';
                         }
-                    }
 
-                    resultStr += '<br />';
-                });
-                resultStr += '</ul>';
+                        var whichSeries = obj.join('|');
+
+
+                        resultStr += '<input type="radio" id="whichSeries" name="whichSeries" value="' + whichSeries + '"' + checked + ' /> ';
+                        if (data.langid && data.langid != "") {
+                            resultStr += '<a href="'+ obj[2] + obj[3] + '&lid=' + data.langid + '" onclick=\"window.open(this.href, \'_blank\'); return false;\" ><b>' + obj[4] + '</b></a>';
+                        } else {
+                            resultStr += '<a href="'+ obj[2] + obj[3] + '" onclick=\"window.open(this.href, \'_blank\'); return false;\" ><b>' + obj[4] + '</b></a>';
+                        }
+
+                        if (obj[5] !== null) {
+                            var startDate = new Date(obj[5]);
+                            var today = new Date();
+                            if (startDate > today) {
+                                resultStr += ' (will debut on ' + obj[5] + ')';
+                            } else {
+                                resultStr += ' (started on ' + obj[5] + ')';
+                            }
+                        }
+
+                        if (obj[0] !== null) {
+                            resultStr += ' [' + obj[0] + ']';
+                        }
+
+                        resultStr += '<br />';
+                    });
+                    resultStr += '</ul>';
+                }
+                resultStr += '</fieldset>';
+                $('#searchResults').html(resultStr);
+                updateSampleText();
+                myform.loadsection(0);
             }
-            resultStr += '</fieldset>';
-            $('#searchResults').html(resultStr);
-            updateSampleText();
-            myform.loadsection(0);
         });
     }
 
-    $('#searchName').click(function () { searchTvdb(); });
+    $('#searchName').click(function () { searchIndexers(); });
 
     if ($('#nameToSearch').length && $('#nameToSearch').val().length) {
         $('#searchName').click();
@@ -138,7 +160,7 @@ $(document).ready(function () {
         var show_name, sep_char;
         // if they've picked a radio button then use that
         if ($('input:radio[name=whichSeries]:checked').length) {
-            show_name = $('input:radio[name=whichSeries]:checked').val().split('|')[1];
+            show_name = $('input:radio[name=whichSeries]:checked').val().split('|')[4];
         }
         // if we provided a show in the hidden field, use that
         else if ($('input:hidden[name=whichSeries]').length && $('input:hidden[name=whichSeries]').val().length) {

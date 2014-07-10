@@ -18,27 +18,23 @@
 
 from __future__ import with_statement
 
-import gzip
 import os
 import re
 import shutil
 import socket
 import stat
-import StringIO
-import shutil
-import sys
 import time
 import traceback
 import urllib
-import urllib2
-import zlib
 import hashlib
 import httplib
 import urlparse
 import uuid
 import base64
+import string
 
-from httplib import BadStatusLine
+from lib import requests
+from lib.requests import exceptions
 from itertools import izip, cycle
 
 try:
@@ -54,21 +50,17 @@ except ImportError:
 from xml.dom.minidom import Node
 
 import sickbeard
-
 from sickbeard.exceptions import MultipleShowObjectsException, ex
 from sickbeard import logger, classes
 from sickbeard.common import USER_AGENT, mediaExtensions, subtitleExtensions, XML_NSMAP
-
 from sickbeard import db
 from sickbeard import encodingKludge as ek
 from sickbeard import notifiers
-
-from lib.tvdb_api import tvdb_api, tvdb_exceptions
-
 from lib import subliminal
-#from sickbeard.subtitles import EXTENSIONS
 
 urllib._urlopener = classes.SickBeardURLopener()
+
+session = requests.Session()
 
 
 def indentXML(elem, level=0):
@@ -92,6 +84,7 @@ def indentXML(elem, level=0):
         if level and (not elem.tail or not elem.tail.strip()):
             elem.tail = i
 
+
 def replaceExtension(filename, newExt):
     '''
     >>> replaceExtension('foo.avi', 'mkv')
@@ -111,6 +104,7 @@ def replaceExtension(filename, newExt):
     else:
         return sepFile[0] + "." + newExt
 
+
 def isMediaFile(filename):
     # ignore samples
     if re.search('(^|[\W_])(sample\d*)[\W_]', filename, re.I):
@@ -121,30 +115,33 @@ def isMediaFile(filename):
         return False
 
     sepFile = filename.rpartition(".")
-    
+
     if re.search('extras?$', sepFile[0], re.I):
         return False
-        
+
     if sepFile[2].lower() in mediaExtensions:
         return True
     else:
         return False
 
+
 def isRarFile(filename):
     archive_regex = '(?P<file>^(?P<base>(?:(?!\.part\d+\.rar$).)*)\.(?:(?:part0*1\.)?rar)$)'
-    
+
     if re.search(archive_regex, filename):
         return True
-    
+
     return False
 
+
 def isBeingWritten(filepath):
-# Return True if file was modified within 60 seconds. it might still be being written to.
+    # Return True if file was modified within 60 seconds. it might still be being written to.
     ctime = max(ek.ek(os.path.getctime, filepath), ek.ek(os.path.getmtime, filepath))
     if ctime > time.time() - 60:
         return True
-    
+
     return False
+
 
 def sanitizeFileName(name):
     '''
@@ -157,124 +154,117 @@ def sanitizeFileName(name):
     >>> sanitizeFileName('.a.b..')
     'a.b'
     '''
-    
+
     # remove bad chars from the filename
     name = re.sub(r'[\\/\*]', '-', name)
     name = re.sub(r'[:"<>|?]', '', name)
-    
+
     # remove leading/trailing periods and spaces
     name = name.strip(' .')
-    
+
     return name
 
 
-def getURL(url, post_data=None, headers=[]):
+def getURL(url, post_data=None, headers=None, params=None, timeout=30, json=False, use_proxy=False):
     """
-Returns a byte-string retrieved from the url provider.
-"""
+    Returns a byte-string retrieved from the url provider.
+    """
 
-    opener = urllib2.build_opener()
-    opener.addheaders = [('User-Agent', USER_AGENT), ('Accept-Encoding', 'gzip,deflate')]
-    for cur_header in headers:
-        opener.addheaders.append(cur_header)
+    global session
+    if not session:
+        session = requests.Session()
+
+    req_headers = ['User-Agent', USER_AGENT, 'Accept-Encoding', 'gzip,deflate']
+    if headers:
+        for cur_header in headers:
+            req_headers.append(cur_header)
 
     try:
-        usock = opener.open(url, post_data)
-        url = usock.geturl()
-        encoding = usock.info().get("Content-Encoding")
+        # Remove double-slashes from url
+        parsed = list(urlparse.urlparse(url))
+        parsed[2] = re.sub("/{2,}", "/", parsed[2])  # replace two or more / with one
+        url = urlparse.urlunparse(parsed)
 
-        if encoding in ('gzip', 'x-gzip', 'deflate'):
-            content = usock.read()
-            if encoding == 'deflate':
-                data = StringIO.StringIO(zlib.decompress(content))
-            else:
-                data = gzip.GzipFile('', 'rb', 9, StringIO.StringIO(content))
-            result = data.read()
+        it = iter(req_headers)
+        
+        
+        if use_proxy and sickbeard.PROXY_SETTING:
+            logger.log("Using proxy for url: " + url, logger.DEBUG)
+            proxies = {
+                "http": sickbeard.PROXY_SETTING,
+                "https": sickbeard.PROXY_SETTING,
+            }
 
+            r = session.get(url, params=params, data=post_data, headers=dict(zip(it, it)), proxies=proxies,
+                            timeout=timeout, verify=False)
         else:
-            result = usock.read()
-
-        usock.close()
-
-    except urllib2.HTTPError, e:
-        logger.log(u"HTTP error " + str(e.code) + " while loading URL " + url, logger.WARNING)
+            r = session.get(url, params=params, data=post_data, headers=dict(zip(it, it)), timeout=timeout,
+                            verify=False)
+    except requests.HTTPError, e:
+        logger.log(u"HTTP error " + str(e.errno) + " while loading URL " + url, logger.WARNING)
         return None
 
-    except urllib2.URLError, e:
-        logger.log(u"URL error " + str(e.reason) + " while loading URL " + url, logger.WARNING)
+    except requests.ConnectionError, e:
+        logger.log(u"Connection error " + str(e.message) + " while loading URL " + url, logger.WARNING)
         return None
 
-    except BadStatusLine:
-        logger.log(u"BadStatusLine error while loading URL " + url, logger.WARNING)
+    except requests.Timeout, e:
+        logger.log(u"Connection timed out " + str(e.message) + " while loading URL " + url, logger.WARNING)
         return None
 
-    except socket.timeout:
-        logger.log(u"Timed out while loading URL " + url, logger.WARNING)
-        return None
+    if r.ok:
+        if json:
+            return r.json()
 
-    except ValueError:
-        logger.log(u"Unknown error while loading URL " + url, logger.WARNING)
-        return None
-
-    except Exception:
-        logger.log(u"Unknown exception while loading URL " + url + ": " + traceback.format_exc(), logger.WARNING)
-        return None
-
-    return result
+        return r.content
 
 
 def _remove_file_failed(file):
     try:
-        ek.ek(os.remove,file)
+        ek.ek(os.remove, file)
     except:
         pass
 
+
 def download_file(url, filename):
+    global session
+    if not session:
+        session = requests.Session()
+
     try:
-        req = urllib2.urlopen(url)
-        CHUNK = 16 * 1024
+        r = session.get(url, stream=True, verify=False)
         with open(filename, 'wb') as fp:
-            while True:
-                chunk = req.read(CHUNK)
-                if not chunk: break
-                fp.write(chunk)
-            fp.close()
-        req.close()
+            for chunk in r.iter_content(chunk_size=1024):
+                if chunk:
+                    fp.write(chunk)
+                    fp.flush()
 
-    except urllib2.HTTPError, e:
+    except requests.HTTPError, e:
         _remove_file_failed(filename)
-        logger.log(u"HTTP error " + str(e.code) + " while loading URL " + url, logger.WARNING)
+        logger.log(u"HTTP error " + str(e.errno) + " while loading URL " + url, logger.WARNING)
         return False
 
-    except urllib2.URLError, e:
-        _remove_file_failed(filename)
-        logger.log(u"URL error " + str(e.reason) + " while loading URL " + url, logger.WARNING)
+    except requests.ConnectionError, e:
+        logger.log(u"Connection error " + str(e.message) + " while loading URL " + url, logger.WARNING)
         return False
 
-    except BadStatusLine:
-        _remove_file_failed(filename)
-        logger.log(u"BadStatusLine error while loading URL " + url, logger.WARNING)
-        return False
-
-    except socket.timeout:
-        _remove_file_failed(filename)
-        logger.log(u"Timed out while loading URL " + url, logger.WARNING)
-        return False
-
-    except ValueError:
-        _remove_file_failed(filename)
-        logger.log(u"Unknown error while loading URL " + url, logger.WARNING)
+    except requests.Timeout, e:
+        logger.log(u"Connection timed out " + str(e.message) + " while loading URL " + url, logger.WARNING)
         return False
 
     except Exception:
         _remove_file_failed(filename)
         logger.log(u"Unknown exception while loading URL " + url + ": " + traceback.format_exc(), logger.WARNING)
         return False
-    
+
     return True
 
-def findCertainShow(showList, tvdbid):
-    results = filter(lambda x: x.tvdbid == tvdbid, showList)
+def findCertainShow(showList, indexerid=None):
+    if indexerid:
+        results = filter(lambda x: x.indexerid == indexerid, showList)
+    else:
+        results = filter(lambda x: x.indexerid == indexerid, showList)
+
     if len(results) == 0:
         return None
     elif len(results) > 1:
@@ -282,12 +272,11 @@ def findCertainShow(showList, tvdbid):
     else:
         return results[0]
 
-def findCertainTVRageShow(showList, tvrid):
-
-    if tvrid == 0:
-        return None
-
-    results = filter(lambda x: x.tvrid == tvrid, showList)
+def findCertainShowFromIMDB(showList, imdbid=None):
+    if imdbid:
+        results = filter(lambda x: x.imdbid == imdbid, showList)
+    else:
+        results = filter(lambda x: x.imdbid == imdbid, showList)
 
     if len(results) == 0:
         return None
@@ -307,8 +296,7 @@ def makeDir(path):
     return True
 
 
-def searchDBForShow(regShowName):
-
+def searchDBForShow(regShowName, log=False):
     showNames = [re.sub('[. -]', ' ', regShowName)]
 
     myDB = db.DBConnection()
@@ -317,30 +305,71 @@ def searchDBForShow(regShowName):
 
     for showName in showNames:
 
-        sqlResults = myDB.select("SELECT * FROM tv_shows WHERE show_name LIKE ? OR tvr_name LIKE ?", [showName, showName])
+        sqlResults = myDB.select("SELECT * FROM tv_shows WHERE show_name LIKE ?",
+                                 [showName])
 
         if len(sqlResults) == 1:
-            return (int(sqlResults[0]["tvdb_id"]), sqlResults[0]["show_name"])
+            return (int(sqlResults[0]["indexer_id"]), sqlResults[0]["show_name"])
 
         else:
-
             # if we didn't get exactly one result then try again with the year stripped off if possible
             match = re.match(yearRegex, showName)
             if match and match.group(1):
-                logger.log(u"Unable to match original name but trying to manually strip and specify show year", logger.DEBUG)
-                sqlResults = myDB.select("SELECT * FROM tv_shows WHERE (show_name LIKE ? OR tvr_name LIKE ?) AND startyear = ?", [match.group(1) + '%', match.group(1) + '%', match.group(3)])
+                if log:
+                    logger.log(u"Unable to match original name but trying to manually strip and specify show year",
+                               logger.DEBUG)
+                sqlResults = myDB.select(
+                    "SELECT * FROM tv_shows WHERE (show_name LIKE ?) AND startyear = ?",
+                    [match.group(1) + '%', match.group(3)])
 
             if len(sqlResults) == 0:
-                logger.log(u"Unable to match a record in the DB for " + showName, logger.DEBUG)
+                if log:
+                    logger.log(u"Unable to match a record in the DB for " + showName, logger.DEBUG)
                 continue
             elif len(sqlResults) > 1:
-                logger.log(u"Multiple results for " + showName + " in the DB, unable to match show name", logger.DEBUG)
+                if log:
+                    logger.log(u"Multiple results for " + showName + " in the DB, unable to match show name", logger.DEBUG)
                 continue
             else:
-                return (int(sqlResults[0]["tvdb_id"]), sqlResults[0]["show_name"])
+                return (int(sqlResults[0]["indexer_id"]), sqlResults[0]["show_name"])
 
+    return
 
-    return None
+def searchIndexerForShowID(regShowName, indexer=None, indexer_id=None, ui=None):
+    showNames = list(set([re.sub('[. -]', ' ', regShowName), regShowName]))
+
+    # Query Indexers for each search term and build the list of results
+    for i in sickbeard.indexerApi().indexers if not indexer else int(indexer or []):
+        # Query Indexers for each search term and build the list of results
+        lINDEXER_API_PARMS = sickbeard.indexerApi(i).api_params.copy()
+        if ui is not None: lINDEXER_API_PARMS['custom_ui'] = ui
+        t = sickbeard.indexerApi(i).indexer(**lINDEXER_API_PARMS)
+
+        for name in showNames:
+            logger.log(u"Trying to find " + name + " on " + sickbeard.indexerApi(i).name, logger.DEBUG)
+
+            search = t[indexer_id] if indexer_id else t[name]
+            try:
+                seriesname = search.seriesname
+            except:
+                seriesname = None
+            try:
+                series_id = search.id
+            except:
+                series_id = None
+
+            if not (seriesname and series_id):
+                continue
+
+            if str(name).lower() == str(seriesname).lower and not indexer_id:
+                return (seriesname, int(sickbeard.indexerApi(i).config['id']), int(series_id))
+            elif int(indexer_id) == int(series_id):
+                return (seriesname, int(sickbeard.indexerApi(i).config['id']), int(indexer_id))
+
+        if indexer:
+            break
+
+    return (None, None, None)
 
 def sizeof_fmt(num):
     '''
@@ -360,8 +389,8 @@ def sizeof_fmt(num):
             return "%3.1f %s" % (num, x)
         num /= 1024.0
 
-def listMediaFiles(path):
 
+def listMediaFiles(path):
     if not dir or not ek.ek(os.path.isdir, path):
         return []
 
@@ -378,12 +407,14 @@ def listMediaFiles(path):
 
     return files
 
+
 def copyFile(srcFile, destFile):
     ek.ek(shutil.copyfile, srcFile, destFile)
     try:
         ek.ek(shutil.copymode, srcFile, destFile)
     except OSError:
         pass
+
 
 def moveFile(srcFile, destFile):
     try:
@@ -393,12 +424,15 @@ def moveFile(srcFile, destFile):
         copyFile(srcFile, destFile)
         ek.ek(os.unlink, srcFile)
 
+
 def link(src, dst):
     if os.name == 'nt':
         import ctypes
+
         if ctypes.windll.kernel32.CreateHardLinkW(unicode(dst), unicode(src), 0) == 0: raise ctypes.WinError()
     else:
         os.link(src, dst)
+
 
 def hardlinkFile(srcFile, destFile):
     try:
@@ -408,21 +442,27 @@ def hardlinkFile(srcFile, destFile):
         logger.log(u"Failed to create hardlink of " + srcFile + " at " + destFile + ". Copying instead", logger.ERROR)
         copyFile(srcFile, destFile)
 
+
 def symlink(src, dst):
     if os.name == 'nt':
         import ctypes
-        if ctypes.windll.kernel32.CreateSymbolicLinkW(unicode(dst), unicode(src), 1 if os.path.isdir(src) else 0) in [0, 1280]: raise ctypes.WinError()
-    else:
-        os.symlink(src, dst)
+
+        if ctypes.windll.kernel32.CreateSymbolicLinkW(unicode(dst), unicode(src), 1 if os.path.isdir(src) else 0) in [0,
+                                                                                                                      1280]:
+            raise ctypes.WinError()
+        else:
+            os.symlink(src, dst)
+
 
 def moveAndSymlinkFile(srcFile, destFile):
     try:
         ek.ek(os.rename, srcFile, destFile)
         fixSetGroupID(destFile)
         ek.ek(symlink, destFile, srcFile)
-    except Exception as e:
-        logger.log(u"Failed to create symlink of " + srcFile + " at " + destFile + ": " + ex(e) + ". Copying instead", logger.ERROR)
+    except:
+        logger.log(u"Failed to create symlink of " + srcFile + " at " + destFile + ". Copying instead", logger.ERROR)
         copyFile(srcFile, destFile)
+
 
 def make_dirs(path):
     """
@@ -479,27 +519,27 @@ def rename_ep_file(cur_path, new_path, old_path_length=0):
     old_path_length: The length of media file path (old name) WITHOUT THE EXTENSION
     """
 
-    new_dest_dir, new_dest_name = os.path.split(new_path) #@UnusedVariable
+    new_dest_dir, new_dest_name = os.path.split(new_path)  #@UnusedVariable
 
     if old_path_length == 0 or old_path_length > len(cur_path):
         # approach from the right
         cur_file_name, cur_file_ext = os.path.splitext(cur_path)  # @UnusedVariable
     else:
         # approach from the left
-        cur_file_ext  = cur_path[old_path_length:]
+        cur_file_ext = cur_path[old_path_length:]
         cur_file_name = cur_path[:old_path_length]
-        
+
     if cur_file_ext[1:] in subtitleExtensions:
         #Extract subtitle language from filename
         sublang = os.path.splitext(cur_file_name)[1][1:]
-        
+
         #Check if the language extracted from filename is a valid language
         try:
             language = subliminal.language.Language(sublang, strict=True)
-            cur_file_ext = '.'+sublang+cur_file_ext 
+            cur_file_ext = '.' + sublang + cur_file_ext
         except ValueError:
             pass
-        
+
     # put the extension on the incoming file
     new_path += cur_file_ext
 
@@ -534,10 +574,10 @@ def delete_empty_folders(check_empty_dir, keep_dir=None):
 
     # as long as the folder exists and doesn't contain any files, delete it
     while ek.ek(os.path.isdir, check_empty_dir) and check_empty_dir != keep_dir:
-
         check_files = ek.ek(os.listdir, check_empty_dir)
 
-        if not check_files or (len(check_files) <= len(ignore_items) and all([check_file in ignore_items for check_file in check_files])):
+        if not check_files or (len(check_files) <= len(ignore_items) and all(
+                [check_file in ignore_items for check_file in check_files])):
             # directory is empty or contains only ignore_items
             try:
                 logger.log(u"Deleting empty folder: " + check_empty_dir)
@@ -552,19 +592,20 @@ def delete_empty_folders(check_empty_dir, keep_dir=None):
         else:
             break
 
+
 def chmodAsParent(childPath):
     if os.name == 'nt' or os.name == 'ce':
         return
 
     parentPath = ek.ek(os.path.dirname, childPath)
-    
+
     if not parentPath:
         logger.log(u"No parent path provided in " + childPath + ", unable to get permissions from it", logger.DEBUG)
         return
-    
+
     parentPathStat = ek.ek(os.stat, parentPath)
     parentMode = stat.S_IMODE(parentPathStat[stat.ST_MODE])
-    
+
     childPathStat = ek.ek(os.stat, childPath)
     childPath_mode = stat.S_IMODE(childPathStat[stat.ST_MODE])
 
@@ -577,17 +618,19 @@ def chmodAsParent(childPath):
         return
 
     childPath_owner = childPathStat.st_uid
-    user_id = os.geteuid() # @UndefinedVariable - only available on UNIX
+    user_id = os.geteuid()  # @UndefinedVariable - only available on UNIX
 
-    if user_id !=0 and user_id != childPath_owner:
+    if user_id != 0 and user_id != childPath_owner:
         logger.log(u"Not running as root or owner of " + childPath + ", not trying to set permissions", logger.DEBUG)
         return
 
     try:
         ek.ek(os.chmod, childPath, childMode)
-        logger.log(u"Setting permissions for %s to %o as parent directory has %o" % (childPath, childMode, parentMode), logger.DEBUG)
+        logger.log(u"Setting permissions for %s to %o as parent directory has %o" % (childPath, childMode, parentMode),
+                   logger.DEBUG)
     except OSError:
         logger.log(u"Failed to set permission for %s to %o" % (childPath, childMode), logger.ERROR)
+
 
 def fileBitFilter(mode):
     for bit in [stat.S_IXUSR, stat.S_IXGRP, stat.S_IXOTH, stat.S_ISUID, stat.S_ISGID]:
@@ -595,6 +638,7 @@ def fileBitFilter(mode):
             mode -= bit
 
     return mode
+
 
 def fixSetGroupID(childPath):
     if os.name == 'nt' or os.name == 'ce':
@@ -613,19 +657,23 @@ def fixSetGroupID(childPath):
             return
 
         childPath_owner = childStat.st_uid
-        user_id = os.geteuid() # @UndefinedVariable - only available on UNIX
+        user_id = os.geteuid()  # @UndefinedVariable - only available on UNIX
 
-        if user_id !=0 and user_id != childPath_owner:
-            logger.log(u"Not running as root or owner of " + childPath + ", not trying to set the set-group-ID", logger.DEBUG)
+        if user_id != 0 and user_id != childPath_owner:
+            logger.log(u"Not running as root or owner of " + childPath + ", not trying to set the set-group-ID",
+                       logger.DEBUG)
             return
 
         try:
-            ek.ek(os.chown, childPath, -1, parentGID) # @UndefinedVariable - only available on UNIX
+            ek.ek(os.chown, childPath, -1, parentGID)  # @UndefinedVariable - only available on UNIX
             logger.log(u"Respecting the set-group-ID bit on the parent directory for %s" % (childPath), logger.DEBUG)
         except OSError:
-            logger.log(u"Failed to respect the set-group-ID bit on the parent directory for %s (setting group ID %i)" % (childPath, parentGID), logger.ERROR)
+            logger.log(
+                u"Failed to respect the set-group-ID bit on the parent directory for %s (setting group ID %i)" % (
+                    childPath, parentGID), logger.ERROR)
 
-def sanitizeSceneName (name, ezrss=False):
+
+def sanitizeSceneName(name, ezrss=False):
     """
     Takes a show name and returns the "scenified" version of it.
     
@@ -634,32 +682,38 @@ def sanitizeSceneName (name, ezrss=False):
     Returns: A string containing the scene version of the show name given.
     """
 
-    if not ezrss:
-        bad_chars = u",:()'!?\u2019"
-    # ezrss leaves : and ! in their show names as far as I can tell
+    if name:
+
+        if not ezrss:
+            bad_chars = u",:()'!?\u2019"
+        # ezrss leaves : and ! in their show names as far as I can tell
+        else:
+            bad_chars = u",()'?\u2019"
+
+        # strip out any bad chars
+        for x in bad_chars:
+            name = name.replace(x, "")
+
+        # tidy up stuff that doesn't belong in scene names
+        name = name.replace("- ", ".").replace(" ", ".").replace("&", "and").replace('/', '.')
+        name = re.sub("\.\.*", ".", name)
+
+        if name.endswith('.'):
+            name = name[:-1]
+
+        return name
     else:
-        bad_chars = u",()'?\u2019"
+        return ''
 
-    # strip out any bad chars
-    for x in bad_chars:
-        name = name.replace(x, "")
-
-    # tidy up stuff that doesn't belong in scene names
-    name = name.replace("- ", ".").replace(" ", ".").replace("&", "and").replace('/', '.')
-    name = re.sub("\.\.*", ".", name)
-
-    if name.endswith('.'):
-        name = name[:-1]
-
-    return name
 
 def create_https_certificates(ssl_cert, ssl_key):
     """
     Create self-signed HTTPS certificares and store in paths 'ssl_cert' and 'ssl_key'
     """
     try:
-        from OpenSSL import crypto  # @UnresolvedImport
-        from lib.certgen import createKeyPair, createCertRequest, createCertificate, TYPE_RSA, serial  # @UnresolvedImport
+        from lib.OpenSSL import crypto  # @UnresolvedImport
+        from lib.certgen import createKeyPair, createCertRequest, createCertificate, TYPE_RSA, \
+            serial  # @UnresolvedImport
     except:
         logger.log(u"pyopenssl module missing, please install for https access", logger.WARNING)
         return False
@@ -667,12 +721,12 @@ def create_https_certificates(ssl_cert, ssl_key):
     # Create the CA Certificate
     cakey = createKeyPair(TYPE_RSA, 1024)
     careq = createCertRequest(cakey, CN='Certificate Authority')
-    cacert = createCertificate(careq, (careq, cakey), serial, (0, 60 * 60 * 24 * 365 * 10)) # ten years
+    cacert = createCertificate(careq, (careq, cakey), serial, (0, 60 * 60 * 24 * 365 * 10))  # ten years
 
     cname = 'SickBeard'
     pkey = createKeyPair(TYPE_RSA, 1024)
     req = createCertRequest(pkey, CN=cname)
-    cert = createCertificate(req, (cacert, cakey), serial, (0, 60* 60 * 24 * 365 *10)) # ten years
+    cert = createCertificate(req, (cacert, cakey), serial, (0, 60 * 60 * 24 * 365 * 10))  # ten years
 
     # Save the key and certificate to disk
     try:
@@ -684,8 +738,10 @@ def create_https_certificates(ssl_cert, ssl_key):
 
     return True
 
+
 if __name__ == '__main__':
     import doctest
+
     doctest.testmod()
 
 
@@ -754,7 +810,7 @@ def get_xml_text(element, mini_dom=False):
 
     return text.strip()
 
- 
+
 def backupVersionedFile(old_file, version):
     numTries = 0
 
@@ -784,14 +840,17 @@ def backupVersionedFile(old_file, version):
 
 
 # try to convert to int, if it fails the default will be returned
-def tryInt(s, s_default = 0):
-    try: return int(s)
-    except: return s_default
+def tryInt(s, s_default=0):
+    try:
+        return int(s)
+    except:
+        return s_default
+
 
 # generates a md5 hash of a file
-def md5_for_file(filename, block_size=2**16):
-    try:    
-        with open(filename,'rb') as f:
+def md5_for_file(filename, block_size=2 ** 16):
+    try:
+        with open(filename, 'rb') as f:
             md5 = hashlib.md5()
             while True:
                 data = f.read(block_size)
@@ -802,7 +861,8 @@ def md5_for_file(filename, block_size=2**16):
             return md5.hexdigest()
     except Exception:
         return None
-    
+
+
 def get_lan_ip():
     """
     Simple function to get LAN localhost_ip 
@@ -812,12 +872,12 @@ def get_lan_ip():
     if os.name != "nt":
         import fcntl
         import struct
-    
+
         def get_interface_ip(ifname):
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             return socket.inet_ntoa(fcntl.ioctl(s.fileno(), 0x8915, struct.pack('256s',
-                                    ifname[:15]))[20:24])
-    
+                                                                                ifname[:15]))[20:24])
+
     ip = socket.gethostbyname(socket.gethostname())
     if ip.startswith("127.") and os.name != "nt":
         interfaces = [
@@ -830,15 +890,16 @@ def get_lan_ip():
             "ath0",
             "ath1",
             "ppp0",
-            ]
+        ]
         for ifname in interfaces:
             try:
                 ip = get_interface_ip(ifname)
-                print ifname, ip 
+                print ifname, ip
                 break
             except IOError:
                 pass
     return ip
+
 
 def check_url(url):
     """
@@ -849,7 +910,7 @@ def check_url(url):
     # http://stackoverflow.com/questions/1140661
     good_codes = [httplib.OK, httplib.FOUND, httplib.MOVED_PERMANENTLY]
 
-    host, path = urlparse.urlparse(url)[1:3]    # elems [1] and [2]
+    host, path = urlparse.urlparse(url)[1:3]  # elems [1] and [2]
     try:
         conn = httplib.HTTPConnection(host)
         conn.request('HEAD', path)
@@ -857,37 +918,72 @@ def check_url(url):
     except StandardError:
         return None
 
+
+"""
+Encryption
+==========
+By Pedro Jose Pereira Vieito <pvieito@gmail.com> (@pvieito)
+
+* If encryption_version==0 then return data without encryption
+* The keys should be unique for each device
+
+To add a new encryption_version:
+  1) Code your new encryption_version        
+  2) Update the last encryption_version available in webserve.py
+  3) Remember to maintain old encryption versions and key generators for retrocompatibility
+"""
+
+# Key Generators
+unique_key1 = hex(uuid.getnode() ** 2)  # Used in encryption v1
+
 # Encryption Functions
 def encrypt(data, encryption_version=0, decrypt=False):
-    """
-    Password encryption
-
-    By Pedro Jose Pereira Vieito <pvieito@gmail.com> (@pvieito)
-    
-    * If encryption_version==0 then return data without encryption
-    * The keys should be unique for each device
-    
-    To add a new encryption_version:
-      1) Code your new encryption_version        
-      2) Update the last encryption_version available in webserve.py
-      3) Remember to maintain old encryption versions and key generators for retrocompatibility
-    """
-    
-    # Key Generators
-    unique_key0 = hex(uuid.getnode()**2) # Used in encryption v1 & v2
-        	
-    # Version 1: Simple XOR encryption (Not very secure, but works)
+    # Version 1: Simple XOR encryption (this is not very secure, but works)
     if encryption_version == 1:
-    	if decrypt:
-        	return ''.join(chr(ord(x) ^ ord(y)) for (x,y) in izip(base64.decodestring(data), cycle(unique_key0))).decode('utf-8')
+        if decrypt:
+            return ''.join(chr(ord(x) ^ ord(y)) for (x, y) in izip(base64.decodestring(data), cycle(unique_key1)))
         else:
-            return base64.encodestring(''.join(chr(ord(x) ^ ord(y)) for (x,y) in izip(data.encode('utf-8'), cycle(unique_key0)))).strip()        	
+            return base64.encodestring(
+                ''.join(chr(ord(x) ^ ord(y)) for (x, y) in izip(data, cycle(unique_key1)))).strip()
     # Version 0: Plain text
     else:
         return data
-        
+
+
 def decrypt(data, encryption_version=0):
-	return encrypt(data, encryption_version, decrypt=True)
+    return encrypt(data, encryption_version, decrypt=True)
+
+
+def full_sanitizeSceneName(name):
+    return re.sub('[. -]', ' ', sanitizeSceneName(name)).lower().lstrip()
+
+
+def _check_against_names(name, show):
+    nameInQuestion = full_sanitizeSceneName(name)
+
+    showNames = [show.name]
+    showNames.extend(sickbeard.scene_exceptions.get_scene_exceptions(show.indexerid))
+
+    for showName in showNames:
+        nameFromList = full_sanitizeSceneName(showName)
+        if nameFromList == nameInQuestion:
+            return True
+
+    return False
+
+
+def get_show_by_name(name):
+
+    showObj = sickbeard.name_cache.retrieveShowFromCache(name)
+    if not showObj:
+        showNames = list(set(sickbeard.show_name_helpers.sceneToNormalShowNames(name)))
+        for showName in showNames if sickbeard.showList else []:
+            sceneResults = [x for x in sickbeard.showList if _check_against_names(showName, x)]
+            showObj = sceneResults[0] if len(sceneResults) else None
+            if showObj:
+                break
+
+    return showObj
 
 def is_hidden_folder(folder):
     """
@@ -907,3 +1003,20 @@ def real_path(path):
     """
     return ek.ek(os.path.normpath, ek.ek(os.path.normcase, ek.ek(os.path.realpath, path)))
 
+
+def validateShow(show, season=None, episode=None):
+    indexer_lang = show.lang
+
+    try:
+        lINDEXER_API_PARMS = sickbeard.indexerApi(show.indexer).api_params.copy()
+
+        if indexer_lang and not indexer_lang == 'en':
+            lINDEXER_API_PARMS['language'] = indexer_lang
+
+        t = sickbeard.indexerApi(show.indexer).indexer(**lINDEXER_API_PARMS)
+        if season is None and episode is None:
+            return t
+
+        return t[show.indexerid][season][episode]
+    except (sickbeard.indexer_episodenotfound, sickbeard.indexer_seasonnotfound):
+        pass

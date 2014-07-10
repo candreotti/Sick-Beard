@@ -17,6 +17,9 @@
 # You should have received a copy of the GNU General Public License
 # along with Sick Beard.  If not, see <http://www.gnu.org/licenses/>.
 
+import time
+import socket
+import math
 import sickbeard
 import generic
 
@@ -25,35 +28,34 @@ from sickbeard import scene_exceptions
 from sickbeard import logger
 from sickbeard import tvcache
 from sickbeard.helpers import sanitizeSceneName
-from sickbeard.common import Quality
+from sickbeard.common import cpu_presets
 from sickbeard.exceptions import ex, AuthException
 
 from lib import jsonrpclib
 from datetime import datetime
-import time
-import socket
-import math
-
 
 class BTNProvider(generic.TorrentProvider):
-
     def __init__(self):
-
         generic.TorrentProvider.__init__(self, "BTN")
 
         self.supportsBacklog = True
+
+        self.enabled = False
+        self.api_key = None
+        self.ratio = None
+
         self.cache = BTNCache(self)
 
         self.url = "http://broadcasthe.net"
 
     def isEnabled(self):
-        return sickbeard.BTN
+        return self.enabled
 
     def imageName(self):
         return 'btn.png'
 
     def _checkAuth(self):
-        if not sickbeard.BTN_API_KEY:
+        if not self.api_key:
             raise AuthException("Your authentication credentials for " + self.name + " are missing, check your config.")
 
         return True
@@ -64,17 +66,19 @@ class BTNProvider(generic.TorrentProvider):
             return self._checkAuth()
 
         if 'api-error' in parsedJSON:
-                    logger.log(u"Incorrect authentication credentials for " + self.name + " : " + parsedJSON['api-error'], logger.DEBUG)
-                    raise AuthException("Your authentication credentials for " + self.name + " are incorrect, check your config.")
+            logger.log(u"Incorrect authentication credentials for " + self.name + " : " + parsedJSON['api-error'],
+                       logger.DEBUG)
+            raise AuthException(
+                "Your authentication credentials for " + self.name + " are incorrect, check your config.")
 
         return True
 
-    def _doSearch(self, search_params, show=None, age=0):
+    def _doSearch(self, search_params, epcount=0, age=0):
 
         self._checkAuth()
 
         params = {}
-        apikey = sickbeard.BTN_API_KEY
+        apikey = self.api_key
 
         # age in seconds
         if age:
@@ -117,7 +121,6 @@ class BTNProvider(generic.TorrentProvider):
                         found_torrents.update(parsedJSON['torrents'])
 
             results = []
-
             for torrentid, torrent_info in found_torrents.iteritems():
                 (title, url) = self._get_title_and_url(torrent_info)
 
@@ -150,7 +153,7 @@ class BTNProvider(generic.TorrentProvider):
 
         except Exception, error:
             errorstring = str(error)
-            if(errorstring.startswith('<') and errorstring.endswith('>')):
+            if (errorstring.startswith('<') and errorstring.endswith('>')):
                 errorstring = errorstring[1:-1]
             logger.log(u"Unknown error while accessing " + self.name + ": " + errorstring, logger.ERROR)
 
@@ -190,77 +193,67 @@ class BTNProvider(generic.TorrentProvider):
 
         return (title, url)
 
-    def _get_season_search_strings(self, show, season=None):
-        if not show:
-            return [{}]
-
+    def _get_season_search_strings(self, ep_obj):
         search_params = []
 
-        name_exceptions = scene_exceptions.get_scene_exceptions(show.tvdbid) + [show.name]
+        name_exceptions = scene_exceptions.get_scene_exceptions(self.show.indexerid) + [self.show.name]
         for name in name_exceptions:
 
             current_params = {}
 
-            if show.tvdbid:
-                current_params['tvdb'] = show.tvdbid
-
-            elif show.tvrid:
-                current_params['tvrage'] = show.tvrid
-
+            if self.show.indexer == 1:
+                current_params['tvdb'] = self.show.indexerid
+            elif self.show.indexer == 2:
+                current_params['tvrage'] = self.show.indexerid
             else:
                 # Search by name if we don't have tvdb or tvrage id
                 current_params['series'] = sanitizeSceneName(name)
 
-            if season != None:
-                whole_season_params = current_params.copy()
-                partial_season_params = current_params.copy()
-                # Search for entire seasons: no need to do special things for air by date shows
-                whole_season_params['category'] = 'Season'
-                whole_season_params['name'] = 'Season ' + str(season)
+            # Search for entire seasons: no need to do special things for air by date shows
+            whole_season_params = current_params.copy()
+            partial_season_params = current_params.copy()
 
-                search_params.append(whole_season_params)
-
-                # Search for episodes in the season
-                partial_season_params['category'] = 'Episode'
-
-                if show.air_by_date:
-                    # Search for the year of the air by date show
-                    partial_season_params['name'] = str(season.split('-')[0])
-                else:
-                    # Search for any result which has Sxx in the name
-                    partial_season_params['name'] = 'S%02d' % int(season)
-
-                search_params.append(partial_season_params)
-
+            # Search for entire seasons: no need to do special things for air by date shows
+            whole_season_params['category'] = 'Season'
+            if ep_obj.show.air_by_date or ep_obj.show.sports:
+                # Search for the year of the air by date show
+                whole_season_params['name'] = str(ep_obj.airdate).split('-')[0]
             else:
-                search_params.append(current_params)
+                whole_season_params['name'] = 'Season ' + str(ep_obj.scene_season)
+
+            search_params.append(whole_season_params)
 
         return search_params
 
-    def _get_episode_search_strings(self, ep_obj):
+    def _get_episode_search_strings(self, ep_obj, add_string=''):
 
         if not ep_obj:
             return [{}]
 
         search_params = {'category': 'Episode'}
 
-        if ep_obj.show.tvdbid:
-            search_params['tvdb'] = ep_obj.show.tvdbid
-        elif ep_obj.show.tvrid:
-            search_params['tvrage'] = ep_obj.show.rid
+        if self.show.indexer == 1:
+            search_params['tvdb'] = self.show.indexerid
+        elif self.show.indexer == 2:
+            search_params['tvrage'] = self.show.indexerid
         else:
-            search_params['series'] = sanitizeSceneName(ep_obj.show_name)
+            search_params['series'] = sanitizeSceneName(self.show.name)
 
-        if ep_obj.show.air_by_date:
+        if self.show.air_by_date:
             date_str = str(ep_obj.airdate)
 
             # BTN uses dots in dates, we just search for the date since that
             # combined with the series identifier should result in just one episode
             search_params['name'] = date_str.replace('-', '.')
+        elif self.show.sports:
+            date_str = str(ep_obj.airdate)
 
+            # BTN uses dots in dates, we just search for the date since that
+            # combined with the series identifier should result in just one episode
+            search_params['name'] = date_str.replace('-', '.')
         else:
             # Do a general name search for the episode, formatted like SXXEYY
-            search_params['name'] = "S%02dE%02d" % (ep_obj.season, ep_obj.episode)
+            search_params['name'] = "S%02dE%02d" % (ep_obj.scene_season, ep_obj.scene_episode)
 
         to_return = [search_params]
 
@@ -268,11 +261,11 @@ class BTNProvider(generic.TorrentProvider):
         if 'series' in search_params:
 
             # add new query string for every exception
-            name_exceptions = scene_exceptions.get_scene_exceptions(ep_obj.show.tvdbid)
+            name_exceptions = scene_exceptions.get_scene_exceptions(self.show.indexerid)
             for cur_exception in name_exceptions:
 
                 # don't add duplicates
-                if cur_exception == ep_obj.show.name:
+                if cur_exception == self.show.name:
                     continue
 
                 # copy all other parameters before setting the show name for this exception
@@ -307,16 +300,21 @@ class BTNProvider(generic.TorrentProvider):
 
         return results
 
+    def seedRatio(self):
+        return self.ratio
 
 class BTNCache(tvcache.TVCache):
-
     def __init__(self, provider):
         tvcache.TVCache.__init__(self, provider)
 
-        # At least 15 minutes between queries
+            # At least 15 minutes between queries
         self.minTime = 15
 
     def updateCache(self):
+
+        # delete anything older then 7 days
+        logger.log(u"Clearing " + self.provider.name + " cache")
+        self._clearCache()
 
         if not self.shouldUpdate():
             return
@@ -331,23 +329,21 @@ class BTNCache(tvcache.TVCache):
             else:
                 return []
 
-            logger.log(u"Clearing " + self.provider.name + " cache and updating with new information")
-            self._clearCache()
-
             if self._checkAuth(data):
                 # By now we know we've got data and no auth errors, all we need to do is put it in the database
-                ql = []
+                cl = []
                 for item in data:
+
                     ci = self._parseItem(item)
                     if ci is not None:
-                        ql.append(ci)
+                        cl.append(ci)
 
                 myDB = self._getDB()
-                myDB.mass_action(ql)
+                myDB.mass_action(cl)
 
             else:
-                raise AuthException("Your authentication info for " + self.provider.name + " is incorrect, check your config")
-
+                raise AuthException(
+                    "Your authentication info for " + self.provider.name + " is incorrect, check your config")
         else:
             return []
 
@@ -362,12 +358,12 @@ class BTNCache(tvcache.TVCache):
 
         # Set maximum to 24 hours (24 * 60 * 60 = 86400 seconds) of "RSS" data search, older things will need to be done through backlog
         if seconds_since_last_update > 86400:
-            logger.log(u"The last known successful update on " + self.provider.name + " was more than 24 hours ago, only trying to fetch the last 24 hours!", logger.WARNING)
+            logger.log(
+                u"The last known successful update on " + self.provider.name + " was more than 24 hours ago, only trying to fetch the last 24 hours!",
+                logger.WARNING)
             seconds_since_last_update = 86400
 
-        data = self.provider._doSearch(search_params=None, age=seconds_since_last_update)
-
-        return data
+        return self.provider._doSearch(search_params=None, age=seconds_since_last_update)
 
     def _parseItem(self, item):
         (title, url) = self.provider._get_title_and_url(item)
@@ -376,7 +372,8 @@ class BTNCache(tvcache.TVCache):
             logger.log(u"Adding item to results: " + title, logger.DEBUG)
             return self._addCacheEntry(title, url)
         else:
-            logger.log(u"The data returned from the " + self.provider.name + " is incomplete, this result is unusable", logger.ERROR)
+            logger.log(u"The data returned from the " + self.provider.name + " is incomplete, this result is unusable",
+                       logger.ERROR)
             return None
 
     def _checkAuth(self, data):

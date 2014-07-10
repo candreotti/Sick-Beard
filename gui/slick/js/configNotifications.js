@@ -46,6 +46,13 @@ $(document).ready(function(){
         $.get(sbRoot + "/home/testBoxcar", {'username': boxcar_username},
             function (data) { $('#testBoxcar-result').html(data); });
     });
+	
+	 $('#testBoxcar2').click(function() {
+        $('#testBoxcar2-result').html(loading);
+        var boxcar2_accesstoken = $("#boxcar2_accesstoken").val();
+        $.get(sbRoot + "/home/testBoxcar2", {'accesstoken': boxcar2_accesstoken},
+            function (data) { $('#testBoxcar2-result').html(data); });
+    });
 
     $('#testPushover').click(function() {
         $('#testPushover-result').html(loading);
@@ -261,9 +268,9 @@ $(document).ready(function(){
                 $("#pushbullet_device_list").html('');
                 for (var i = 0; i < devices.length; i++) {
                     if(current_pushbullet_device == devices[i].iden) {
-                        $("#pushbullet_device_list").append('<option value="'+devices[i].iden+'" selected>' + devices[i].extras.model + '</option>')
+                        $("#pushbullet_device_list").append('<option value="'+devices[i].iden+'" selected>' + devices[i].extras.nickname + '</option>')
                     } else {
-                        $("#pushbullet_device_list").append('<option value="'+devices[i].iden+'">' + devices[i].extras.model + '</option>')
+                        $("#pushbullet_device_list").append('<option value="'+devices[i].iden+'">' + devices[i].extras.nickname + '</option>')
                     }
                 }
                 if(msg) {

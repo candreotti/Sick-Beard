@@ -24,7 +24,7 @@ The [`tvnamer`][tvnamer] command-line tool can also be installed via `easy_insta
 ## Basic usage
 
     import tvdb_api
-    t = tvdb_api.Tvdb()
+    t = indexerApi()
     episode = t['My Name Is Earl'][1][3] # get season 1, episode 3 of show
     print episode['episodename'] # Print episode name
 
@@ -50,7 +50,7 @@ There are several exceptions you may catch, these can be imported from `tvdb_api
 All data exposed by [thetvdb.com][tvdb] is accessible via the `Show` class. A Show is retrieved by doing..
 
     >>> import tvdb_api
-    >>> t = tvdb_api.Tvdb()
+    >>> t = indexerApi()
     >>> show = t['scrubs']
     >>> type(show)
     <class 'tvdb_api.Show'>
@@ -63,7 +63,7 @@ For example, to find out what network Scrubs is aired:
 The data is stored in an attribute named `data`, within the Show instance:
 
     >>> t['scrubs'].data.keys()
-    ['networkid', 'rating', 'airs_dayofweek', 'contentrating', 'seriesname', 'id', 'airs_time', 'network', 'fanart', 'lastupdated', 'actors', 'ratingcount', 'status', 'added', 'poster', 'imdb_id', 'genre', 'banner', 'seriesid', 'language', 'zap2it_id', 'addedby', 'firstaired', 'runtime', 'overview']
+    ['networkid', 'rating', 'airs_dayofweek', 'contentrating', 'seriesname', 'id', 'airs_time', 'network', 'fanart', 'lastupdated', 'actors', 'ratingcount', 'status', 'added', 'poster', 'imdb_id', 'genre', 'banner', 'seriesid', 'language', 'zap2it_id', 'addedby', 'tms_wanted', 'firstaired', 'runtime', 'overview']
 
 Although each element is also accessible via `t['scrubs']` for ease-of-use:
 

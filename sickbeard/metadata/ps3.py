@@ -77,15 +77,18 @@ class PS3Metadata(generic.GenericMetadata):
     # Override with empty methods for unsupported features
     def retrieveShowMetadata(self, folder):
         # no show metadata generated, we abort this lookup function
-        return (None, None)
+        return (None, None, None)
 
-    def create_show_metadata(self, show_obj):
+    def create_show_metadata(self, show_obj, force=False):
+        pass
+
+    def update_show_indexer_metadata(self, show_obj):
         pass
 
     def get_show_file_path(self, show_obj):
         pass
 
-    def create_episode_metadata(self, ep_obj):
+    def create_episode_metadata(self, ep_obj, force=False):
         pass
 
     def create_fanart(self, show_obj):

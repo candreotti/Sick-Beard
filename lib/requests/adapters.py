@@ -9,6 +9,7 @@ and maintain connections.
 """
 
 import socket
+import copy
 
 from .models import Response
 from .packages.urllib3.poolmanager import PoolManager, proxy_from_url
@@ -62,7 +63,7 @@ class HTTPAdapter(BaseAdapter):
 
     Usage::
 
-      >>> import requests
+      >>> import lib.requests
       >>> s = requests.Session()
       >>> a = requests.adapters.HTTPAdapter(max_retries=3)
       >>> s.mount('http://', a)
@@ -372,19 +373,19 @@ class HTTPAdapter(BaseAdapter):
                     conn._put_conn(low_conn)
 
         except socket.error as sockerr:
-            raise ConnectionError(sockerr)
+            raise ConnectionError(sockerr, request=request)
 
         except MaxRetryError as e:
-            raise ConnectionError(e)
+            raise ConnectionError(e, request=request)
 
         except _ProxyError as e:
             raise ProxyError(e)
 
         except (_SSLError, _HTTPError) as e:
             if isinstance(e, _SSLError):
-                raise SSLError(e)
+                raise SSLError(e, request=request)
             elif isinstance(e, TimeoutError):
-                raise Timeout(e)
+                raise Timeout(e, request=request)
             else:
                 raise
 

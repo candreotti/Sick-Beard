@@ -27,20 +27,30 @@
 <form id="addShowForm" method="post" action="$sbRoot/home/addShows/addNewShow" accept-charset="utf-8">
 
 <fieldset class="sectionwrap">
-    <legend class="legendStep">Find a show on the TVDB</legend>
+    <legend class="legendStep">Find a show on the TVDB or TVRAGE</legend>
 
     <div class="stepDiv">
+        <input type="hidden" id="indexer_timeout" value="$sickbeard.INDEXER_TIMEOUT" />
+
         #if $use_provided_info:
-            Show retrieved from existing metadata: <a href="http://thetvdb.com/?tab=series&id=$provided_tvdb_id">$provided_tvdb_name</a>
-            <input type="hidden" name="tvdbLang" value="it" />
-            <input type="hidden" name="whichSeries" value="$provided_tvdb_id" />
-            <input type="hidden" id="providedName" value="$provided_tvdb_name" />
+            Show retrieved from existing metadata: <a href="$sickbeard.indexerApi($provided_indexer).config["show_url"]$provided_indexer_id">$provided_indexer_name</a>
+            <input type="hidden" name="indexerLang" value="en" />
+            <input type="hidden" name="whichSeries" value="$provided_indexer_id" />
+            <input type="hidden" id="providedName" value="$provided_indexer_name" />
+            <input type="hidden" id="providedIndexer" value="$provided_indexer" />
         #else:
             <input type="text" id="nameToSearch" value="$default_show_name" style="margin-top: 1px;" />
-            <select name="tvdbLang" id="tvdbLangSelect" style="height: 26px;margin-top: 1px;">
-                <option value="it" selected="selected">it</option>
+            <select name="indexerLang" id="indexerLangSelect" style="height: 26px;margin-top: 1px;">
+                <option value="en" selected="selected">en</option>
             </select><b>*</b>
-            <input class="btn" type="button" id="searchName" value="Search" style="margin-top: -3px;" /><br /><br />
+
+            <select name="providedIndexer" id="providedIndexer" style="height: 26px;margin-top: 1px;">
+                <option value="0" #if $provided_indexer == 0 then "selected=\"selected\"" else ""#>All Indexers</option>
+                #for $indexer in $indexers
+                    <option value="$indexer" #if $provided_indexer == $indexer then "selected=\"selected\"" else ""#>$indexers[$indexer]</option>
+                #end for
+            </select>
+            <input class="btn" type="button" id="searchName" value="Search" style="height: 26px;position:relative;top:-1px;" /><br /><br />
     
             <b>*</b> This will only affect the language of the retrieved metadata file contents and episode filenames.<br />
             This <b>DOES NOT</b> allow Sick Beard to download non-english TV episodes!<br />

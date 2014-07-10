@@ -18,10 +18,12 @@
 
 import re
 import datetime
-
+import urlparse
+import time
 import sickbeard
 import generic
-from sickbeard.common import Quality
+
+from sickbeard.common import Quality, cpu_presets
 from sickbeard import logger
 from sickbeard import tvcache
 from sickbeard import db
@@ -32,7 +34,8 @@ from sickbeard.common import Overview
 from sickbeard.exceptions import ex
 from sickbeard import clients
 from lib import requests
-
+from lib.requests import exceptions
+from sickbeard.helpers import sanitizeSceneName
 
 class SpeedCDProvider(generic.TorrentProvider):
 
@@ -49,16 +52,22 @@ class SpeedCDProvider(generic.TorrentProvider):
 
         self.supportsBacklog = True
 
+        self.enabled = False
+        self.username = None
+        self.password = None
+        self.ratio = None
+        self.freeleech = False
+        self.minseed = None
+        self.minleech = None
+
         self.cache = SpeedCDCache(self)
 
         self.url = self.urls['base_url']
 
         self.categories = {'Season': {'c14':1}, 'Episode': {'c2':1, 'c49':1}, 'RSS': {'c14':1, 'c2':1, 'c49':1}}
 
-        self.session = None
-
     def isEnabled(self):
-        return sickbeard.SPEEDCD
+        return self.enabled
 
     def imageName(self):
         return 'speedcd.png'
@@ -70,15 +79,12 @@ class SpeedCDProvider(generic.TorrentProvider):
 
     def _doLogin(self):
 
-        login_params = {'username': sickbeard.SPEEDCD_USERNAME,
-                        'password': sickbeard.SPEEDCD_PASSWORD
+        login_params = {'username': self.username,
+                        'password': self.password
                         }
 
-        self.session = requests.Session()
-        self.session.headers.update({'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.8; rv:24.0) Gecko/20130519 Firefox/24.0)'})
-
         try:
-            response = self.session.post(self.urls['login'], data=login_params, timeout=30)
+            response = self.session.post(self.urls['login'], data=login_params, timeout=30, verify=False)
         except (requests.exceptions.ConnectionError, requests.exceptions.HTTPError), e:
             logger.log(u'Unable to connect to ' + self.name + ' provider: ' + ex(e), logger.ERROR)
             return False
@@ -90,31 +96,17 @@ class SpeedCDProvider(generic.TorrentProvider):
 
         return True
 
-    def _get_season_search_strings(self, show, season=None):
-
-        search_string = {'Episode': []}
-
-        if not show:
-            return []
-
-        seasonEp = show.getAllEpisodes(season)
-
-        wantedEp = [x for x in seasonEp if show.getOverview(x.status) in (Overview.WANTED, Overview.QUAL)]
+    def _get_season_search_strings(self, ep_obj):
 
         #If Every episode in Season is a wanted Episode then search for Season first
-        if wantedEp == seasonEp and not show.air_by_date:
-            search_string = {'Season': [], 'Episode': []}
-            for show_name in set(show_name_helpers.allPossibleShowNames(show)):
-                ep_string = show_name +' S%02d' % int(season) #1) ShowName SXX
-                search_string['Season'].append(ep_string)
+        search_string = {'Season': []}
+        for show_name in set(show_name_helpers.allPossibleShowNames(self.show)):
+            if ep_obj.show.air_by_date or ep_obj.show.sports:
+                ep_string = show_name + str(ep_obj.airdate).split('-')[0]
+            else:
+                ep_string = show_name +' S%02d' % int(ep_obj.scene_season) #1) showName SXX
 
-        #Building the search string with the episodes we need
-        for ep_obj in wantedEp:
-            search_string['Episode'] += self._get_episode_search_strings(ep_obj)[0]['Episode']
-
-        #If no Episode is needed then return an empty list
-        if not search_string['Episode']:
-            return []
+            search_string['Season'].append(ep_string)
 
         return [search_string]
 
@@ -125,20 +117,27 @@ class SpeedCDProvider(generic.TorrentProvider):
         if not ep_obj:
             return []
 
-        if ep_obj.show.air_by_date:
-            for show_name in set(show_name_helpers.allPossibleShowNames(ep_obj.show)):
-                ep_string = show_name_helpers.sanitizeSceneName(show_name) +' '+ str(ep_obj.airdate)
+        if self.show.air_by_date:
+            for show_name in set(show_name_helpers.allPossibleShowNames(self.show)):
+                ep_string = sanitizeSceneName(show_name) + ' ' + \
+                            str(ep_obj.airdate).replace('-', '|')
+                search_string['Episode'].append(ep_string)
+        elif self.show.sports:
+            for show_name in set(show_name_helpers.allPossibleShowNames(self.show)):
+                ep_string = sanitizeSceneName(show_name) + ' ' + \
+                            str(ep_obj.airdate).replace('-', '|') + '|' + \
+                            ep_obj.airdate.strftime('%b')
                 search_string['Episode'].append(ep_string)
         else:
-            for show_name in set(show_name_helpers.allPossibleShowNames(ep_obj.show)):
+            for show_name in set(show_name_helpers.allPossibleShowNames(self.show)):
                 ep_string = show_name_helpers.sanitizeSceneName(show_name) +' '+ \
-                sickbeard.config.naming_ep_type[2] % {'seasonnumber': ep_obj.season, 'episodenumber': ep_obj.episode}
+                sickbeard.config.naming_ep_type[2] % {'seasonnumber': ep_obj.scene_season, 'episodenumber': ep_obj.scene_episode}
 
                 search_string['Episode'].append(re.sub('\s+', ' ', ep_string))
 
         return [search_string]
 
-    def _doSearch(self, search_params, show=None):
+    def _doSearch(self, search_params, epcount=0, age=0):
 
         results = []
         items = {'Season': [], 'Episode': [], 'RSS': []}
@@ -164,7 +163,7 @@ class SpeedCDProvider(generic.TorrentProvider):
 
                 for torrent in torrents:
 
-                    if sickbeard.SPEEDCD_FREELEECH and not torrent['free']:
+                    if self.freeleech and not torrent['free']:
                         continue
 
                     title = re.sub('<[^>]*>', '', torrent['name'])
@@ -172,7 +171,7 @@ class SpeedCDProvider(generic.TorrentProvider):
                     seeders = int(torrent['seed'])
                     leechers = int(torrent['leech'])
 
-                    if mode != 'RSS' and seeders == 0:
+                    if mode != 'RSS' and (seeders == 0 or seeders < self.minseed or leechers < self.minleech):
                         continue
 
                     if not title or not url:
@@ -197,32 +196,41 @@ class SpeedCDProvider(generic.TorrentProvider):
 
         return (title, url)
 
-    def getURL(self, url, headers=None):
-
+    def getURL(self, url, post_data=None, headers=None, json=False):
         if not self.session:
             self._doLogin()
 
-        if not headers:
-            headers = {'user-agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/32.0.1700.107 Safari/537.36'}
-
         try:
-            response = self.session.get(url, headers=headers)
+            # Remove double-slashes from url
+            parsed = list(urlparse.urlparse(url))
+            parsed[2] = re.sub("/{2,}", "/", parsed[2])  # replace two or more / with one
+            url = urlparse.urlunparse(parsed)
+
+            if sickbeard.PROXY_SETTING:
+                proxies = {
+                    "http": sickbeard.PROXY_SETTING,
+                    "https": sickbeard.PROXY_SETTING,
+                }
+
+                r = self.session.get(url, proxies=proxies, verify=False)
+            else:
+                r = self.session.get(url, verify=False)
         except (requests.exceptions.ConnectionError, requests.exceptions.HTTPError), e:
             logger.log(u"Error loading "+self.name+" URL: " + ex(e), logger.ERROR)
             return None
 
-        if response.status_code != 200:
-            logger.log(self.name + u" page requested with url " + url +" returned status code is " + str(response.status_code) + ': ' + clients.http_error_code[response.status_code], logger.WARNING)
+        if r.status_code != 200:
+            logger.log(self.name + u" page requested with url " + url +" returned status code is " + str(r.status_code) + ': ' + clients.http_error_code[r.status_code], logger.WARNING)
             return None
 
-        return response.content
+        return r.content
 
     def findPropers(self, search_date=datetime.datetime.today()):
 
         results = []
 
         sqlResults = db.DBConnection().select('SELECT s.show_name, e.showid, e.season, e.episode, e.status, e.airdate FROM tv_episodes AS e' +
-                                              ' INNER JOIN tv_shows AS s ON (e.showid = s.tvdb_id)' +
+                                              ' INNER JOIN tv_shows AS s ON (e.showid = s.indexer_id)' +
                                               ' WHERE e.airdate >= ' + str(search_date.toordinal()) +
                                               ' AND (e.status IN (' + ','.join([str(x) for x in Quality.DOWNLOADED]) + ')' +
                                               ' OR (e.status IN (' + ','.join([str(x) for x in Quality.SNATCHED]) + ')))'
@@ -230,9 +238,11 @@ class SpeedCDProvider(generic.TorrentProvider):
         if not sqlResults:
             return []
 
-        for sqlShow in sqlResults:
-            curShow = helpers.findCertainShow(sickbeard.showList, int(sqlShow["showid"]))
-            curEp = curShow.getEpisode(int(sqlShow["season"]), int(sqlShow["episode"]))
+        for sqlshow in sqlResults:
+            self.show = curshow = helpers.findCertainShow(sickbeard.showList, int(sqlshow["showid"]))
+            if not self.show: continue
+            curEp = curshow.getEpisode(int(sqlshow["season"]), int(sqlshow["episode"]))
+
             searchString = self._get_episode_search_strings(curEp, add_string='PROPER|REPACK')
 
             for item in self._doSearch(searchString[0]):
@@ -241,6 +251,8 @@ class SpeedCDProvider(generic.TorrentProvider):
 
         return results
 
+    def seedRatio(self):
+        return self.ratio
 
 class SpeedCDCache(tvcache.TVCache):
 
@@ -253,6 +265,10 @@ class SpeedCDCache(tvcache.TVCache):
 
     def updateCache(self):
 
+        # delete anything older then 7 days
+        logger.log(u"Clearing " + self.provider.name + " cache")
+        self._clearCache()
+
         if not self.shouldUpdate():
             return
 
@@ -264,11 +280,9 @@ class SpeedCDCache(tvcache.TVCache):
         else:
             return []
 
-        logger.log(u"Clearing " + self.provider.name + " cache and updating with new information")
-        self._clearCache()
-
         ql = []
         for result in rss_results:
+
             item = (result[0], result[1])
             ci = self._parseItem(item)
             if ci is not None:
@@ -284,7 +298,7 @@ class SpeedCDCache(tvcache.TVCache):
         if not title or not url:
             return None
 
-        logger.log(u"Adding item to cache: " + title, logger.DEBUG)
+        logger.log(u"Attempting to cache item:[" + title +"]", logger.DEBUG)
 
         return self._addCacheEntry(title, url)
 

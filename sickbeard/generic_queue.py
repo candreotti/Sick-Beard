@@ -55,7 +55,7 @@ class GenericQueue(object):
         
         return item
 
-    def run(self):
+    def run(self, force=False):
 
         # only start a new task if one isn't already going
         if self.thread == None or self.thread.isAlive() == False:
@@ -130,5 +130,3 @@ class QueueItem:
         """Implementing Classes should call this"""
 
         self.inProgress = False
-
-

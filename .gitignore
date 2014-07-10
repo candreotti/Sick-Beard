@@ -45,3 +45,5 @@ ehthumbs.db
 Thumbs.db
 .directory
 *~
+/.idea/
+*.torrent

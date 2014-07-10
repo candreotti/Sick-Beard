@@ -76,11 +76,12 @@ sickbeard.FLATTEN_FOLDERS_DEFAULT = 0
 
 sickbeard.NAMING_PATTERN = ''
 sickbeard.NAMING_ABD_PATTERN = ''
+sickbeard.NAMING_SPORTS_PATTERN = ''
 sickbeard.NAMING_MULTI_EP = 1
 
 
 sickbeard.PROVIDER_ORDER = ["sick_beard_index"]
-sickbeard.newznabProviderList = providers.getNewznabProviderList("Sick Beard Index|http://lolo.sickbeard.com/|0|5030,5040|0!!!NZBs.org|http://nzbs.org/||5030,5040,5070,5090|0!!!Usenet-Crawler|http://www.usenet-crawler.com/||5030,5040|0")
+sickbeard.newznabProviderList = providers.getNewznabProviderList("'Sick Beard Index|http://lolo.sickbeard.com/|0|5030,5040,5060|0|eponly|0!!!NZBs.org|https://nzbs.org/||5030,5040,5060,5070,5090|0|eponly|0!!!Usenet-Crawler|https://www.usenet-crawler.com/||5030,5040,5060|0|eponly|0'")
 sickbeard.providerList = providers.makeProviderList()
 
 sickbeard.PROG_DIR = os.path.abspath('..')
@@ -138,7 +139,7 @@ class TestCacheDBConnection(TestDBConnection, object):
 
         # Create the table if it's not already there
         try:
-            sql = "CREATE TABLE " + providerName + " (name TEXT, season NUMERIC, episodes TEXT, tvrid NUMERIC, tvdbid NUMERIC, url TEXT, time NUMERIC, quality TEXT);"
+            sql = "CREATE TABLE " + providerName + " (name TEXT, season NUMERIC, episodes TEXT, indexerid NUMERIC, url TEXT, time NUMERIC, quality TEXT);"
             self.connection.execute(sql)
             self.connection.commit()
         except sqlite3.OperationalError, e:
@@ -179,7 +180,7 @@ def tearDown_test_db():
         although this seams not to work on my system it leaves me with an zero kb file
     """
     # uncomment next line so leave the db intact between test and at the end
-    #return False
+    return False
     if os.path.exists(os.path.join(TESTDIR, TESTDBNAME)):
         os.remove(os.path.join(TESTDIR, TESTDBNAME))
     if os.path.exists(os.path.join(TESTDIR, TESTCACHEDBNAME)):

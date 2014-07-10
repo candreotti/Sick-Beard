@@ -19,7 +19,7 @@
 from sickbeard import db
 
 # Add new migrations at the bottom of the list; subclass the previous migration.
-class InitialSchema (db.SchemaUpgrade):
+class InitialSchema(db.SchemaUpgrade):
     def test(self):
         return self.hasTable("lastUpdate")
 
@@ -27,6 +27,7 @@ class InitialSchema (db.SchemaUpgrade):
 
         queries = [
             ("CREATE TABLE lastUpdate (provider TEXT, time NUMERIC);",),
+            ("CREATE TABLE lastSearch (provider TEXT, time NUMERIC);",),
             ("CREATE TABLE db_version (db_version INTEGER);",),
             ("INSERT INTO db_version (db_version) VALUES (?)", 1),
         ]
@@ -36,12 +37,15 @@ class InitialSchema (db.SchemaUpgrade):
             else:
                 self.connection.action(query[0], query[1:])
 
+
 class AddSceneExceptions(InitialSchema):
     def test(self):
         return self.hasTable("scene_exceptions")
 
     def execute(self):
-        self.connection.action("CREATE TABLE scene_exceptions (exception_id INTEGER PRIMARY KEY, tvdb_id INTEGER KEY, show_name TEXT)")
+        self.connection.action(
+            "CREATE TABLE scene_exceptions (exception_id INTEGER PRIMARY KEY, tvdb_id INTEGER KEY, show_name TEXT)")
+
 
 class AddSceneNameCache(AddSceneExceptions):
     def test(self):
@@ -50,9 +54,77 @@ class AddSceneNameCache(AddSceneExceptions):
     def execute(self):
         self.connection.action("CREATE TABLE scene_names (tvdb_id INTEGER, name TEXT)")
 
+
 class AddNetworkTimezones(AddSceneNameCache):
     def test(self):
         return self.hasTable("network_timezones")
 
     def execute(self):
         self.connection.action("CREATE TABLE network_timezones (network_name TEXT PRIMARY KEY, timezone TEXT)")
+
+
+class AddXemNumbering(AddNetworkTimezones):
+    def test(self):
+        return self.hasTable("xem_numbering")
+
+    def execute(self):
+        self.connection.action(
+            "CREATE TABLE xem_numbering (indexer TEXT, indexer_id INTEGER, season INTEGER, episode INTEGER, scene_season INTEGER, scene_episode INTEGER)")
+
+class AddXemRefresh(AddXemNumbering):
+    def test(self):
+        return self.hasTable("xem_refresh")
+
+    def execute(self):
+        self.connection.action(
+            "CREATE TABLE xem_refresh (indexer TEXT, indexer_id INTEGER PRIMARY KEY, last_refreshed INTEGER)")
+
+class ConvertSceneExceptionsToIndexerID(AddXemRefresh):
+    def test(self):
+        return self.hasColumn("scene_exceptions", "indexer_id")
+
+    def execute(self):
+        if self.hasTable("tmp_scene_exceptions"):
+            self.connection.action("DROP TABLE tmp_scene_exceptions")
+
+        self.connection.action("ALTER TABLE scene_exceptions RENAME TO tmp_scene_exceptions")
+        self.connection.action(
+            "CREATE TABLE scene_exceptions (exception_id INTEGER PRIMARY KEY, indexer_id INTEGER KEY, show_name TEXT)")
+        self.connection.action(
+            "INSERT INTO scene_exceptions(exception_id, indexer_id, show_name) SELECT exception_id, tvdb_id, show_name FROM tmp_scene_exceptions")
+        self.connection.action("DROP TABLE tmp_scene_exceptions")
+
+
+class ConvertSceneNamesToIndexerID(ConvertSceneExceptionsToIndexerID):
+    def test(self):
+        return self.hasColumn("scene_names", "indexer_id")
+
+    def execute(self):
+        if self.hasTable("tmp_scene_names"):
+            self.connection.action("DROP TABLE tmp_scene_names")
+
+        self.connection.action("ALTER TABLE scene_names RENAME TO tmp_scene_names")
+        self.connection.action("CREATE TABLE scene_names (indexer_id INTEGER, name TEXT)")
+        self.connection.action("INSERT INTO scene_names(indexer_id, name) SELECT tvdb_id, name FROM tmp_scene_names")
+        self.connection.action("DROP TABLE tmp_scene_names")
+
+class ConvertIndexerToInteger(ConvertSceneNamesToIndexerID):
+    def execute(self):
+        ql = []
+        ql.append(["UPDATE xem_numbering SET indexer = ? WHERE LOWER(indexer) = ?", ["1", "tvdb"]])
+        ql.append(["UPDATE xem_numbering SET indexer = ? WHERE LOWER(indexer) = ?", ["2", "tvrage"]])
+        ql.append(["UPDATE xem_refresh SET indexer = ? WHERE LOWER(indexer) = ?", ["1", "tvdb"]])
+        ql.append(["UPDATE xem_refresh SET indexer = ? WHERE LOWER(indexer) = ?", ["2", "tvrage"]])
+        self.connection.mass_action(ql)
+
+class RemoveKeysFromXemNumbering(ConvertIndexerToInteger):
+    def execute(self):
+        self.connection.action("ALTER TABLE xem_numbering DROP UNIQUE (indexer, indexer_id, season, episode)")
+        self.connection.action("ALTER TABLE xem_numbering DROP PRIMARY KEY")
+
+class AddLastSearch(RemoveKeysFromXemNumbering):
+    def test(self):
+        return self.hasTable("lastSearch")
+
+    def execute(self):
+        self.connection.action("CREATE TABLE lastSearch (provider TEXT, time NUMERIC)")

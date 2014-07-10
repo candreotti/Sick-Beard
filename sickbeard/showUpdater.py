@@ -30,7 +30,6 @@ from sickbeard import db
 
 
 class ShowUpdater():
-
     def __init__(self):
         self.updateInterval = datetime.timedelta(hours=1)
 
@@ -39,7 +38,7 @@ class ShowUpdater():
         # update at 3 AM
         run_updater_time = datetime.time(hour=3)
 
-        update_datetime = datetime.datetime.today()
+        update_datetime = datetime.datetime.now()
         update_date = update_datetime.date()
 
         logger.log(u"Checking update interval", logger.DEBUG)
@@ -54,29 +53,32 @@ class ShowUpdater():
 
         # clean out cache directory, remove everything > 12 hours old
         if sickbeard.CACHE_DIR:
-            cache_dir = sickbeard.TVDB_API_PARMS['cache']
-            logger.log(u"Trying to clean cache folder " + cache_dir)
+            for indexer in sickbeard.indexerApi().indexers:
+                cache_dir = sickbeard.indexerApi(indexer).cache
+                logger.log(u"Trying to clean cache folder " + cache_dir)
 
-            # Does our cache_dir exists
-            if not ek.ek(os.path.isdir, cache_dir):
-                logger.log(u"Can't clean " + cache_dir + " if it doesn't exist", logger.WARNING)
-            else:
-                max_age = datetime.timedelta(hours=12)
-                # Get all our cache files
-                cache_files = ek.ek(os.listdir, cache_dir)
+                # Does our cache_dir exists
+                if not ek.ek(os.path.isdir, cache_dir):
+                    logger.log(u"Can't clean " + cache_dir + " if it doesn't exist", logger.WARNING)
+                else:
+                    max_age = datetime.timedelta(hours=12)
+                    # Get all our cache files
+                    cache_files = ek.ek(os.listdir, cache_dir)
 
-                for cache_file in cache_files:
-                    cache_file_path = ek.ek(os.path.join, cache_dir, cache_file)
+                    for cache_file in cache_files:
+                        cache_file_path = ek.ek(os.path.join, cache_dir, cache_file)
 
-                    if ek.ek(os.path.isfile, cache_file_path):
-                        cache_file_modified = datetime.datetime.fromtimestamp(ek.ek(os.path.getmtime, cache_file_path))
+                        if ek.ek(os.path.isfile, cache_file_path):
+                            cache_file_modified = datetime.datetime.fromtimestamp(
+                                ek.ek(os.path.getmtime, cache_file_path))
 
-                        if update_datetime - cache_file_modified > max_age:
-                            try:
-                                ek.ek(os.remove, cache_file_path)
-                            except OSError, e:
-                                logger.log(u"Unable to clean " + cache_dir + ": " + repr(e) + " / " + str(e), logger.WARNING)
-                                break
+                            if update_datetime - cache_file_modified > max_age:
+                                try:
+                                    ek.ek(os.remove, cache_file_path)
+                                except OSError, e:
+                                    logger.log(u"Unable to clean " + cache_dir + ": " + repr(e) + " / " + str(e),
+                                               logger.WARNING)
+                                    break
 
         # select 10 'Ended' tv_shows updated more than 90 days ago to include in this update
         stale_should_update = []
@@ -84,10 +86,12 @@ class ShowUpdater():
 
         myDB = db.DBConnection()
         # last_update_date <= 90 days, sorted ASC because dates are ordinal
-        sql_result = myDB.select("SELECT tvdb_id FROM tv_shows WHERE status = 'Ended' AND last_update_tvdb <= ? ORDER BY last_update_tvdb ASC LIMIT 10;", [stale_update_date])
+        sql_result = myDB.select(
+            "SELECT indexer_id FROM tv_shows WHERE status = 'Ended' AND last_update_indexer <= ? ORDER BY last_update_indexer ASC LIMIT 10;",
+            [stale_update_date])
 
         for cur_result in sql_result:
-            stale_should_update.append(cur_result['tvdb_id'])
+            stale_should_update.append(int(cur_result['indexer_id']))
 
         # start update process
         piList = []
@@ -95,10 +99,12 @@ class ShowUpdater():
 
             try:
                 # if should_update returns True (not 'Ended') or show is selected stale 'Ended' then update, otherwise just refresh
-                if curShow.should_update(update_date=update_date) or curShow.tvdbid in stale_should_update:
+                if curShow.should_update(update_date=update_date) or curShow.indexerid in stale_should_update:
                     curQueueItem = sickbeard.showQueueScheduler.action.updateShow(curShow, True)  # @UndefinedVariable
                 else:
-                    logger.log(u"Not updating episodes for show " + curShow.name + " because it's marked as ended and last/next episode is not within the grace period.", logger.DEBUG)
+                    logger.log(
+                        u"Not updating episodes for show " + curShow.name + " because it's marked as ended and last/next episode is not within the grace period.",
+                        logger.DEBUG)
                     curQueueItem = sickbeard.showQueueScheduler.action.refreshShow(curShow, True)  # @UndefinedVariable
 
                 piList.append(curQueueItem)

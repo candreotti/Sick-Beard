@@ -16,6 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with Sick Beard.  If not, see <http://www.gnu.org/licenses/>.
 
+import time
 import datetime
 import sickbeard
 from sickbeard.common import *
@@ -85,7 +86,7 @@ class SubtitlesFinder():
     The SubtitlesFinder will be executed every hour but will not necessarly search
     and download subtitles. Only if the defined rule is true
     """
-    def run(self):
+    def run(self, force=False):
         # TODO: Put that in the __init__ before starting the thread?
         if not sickbeard.USE_SUBTITLES:
             logger.log(u'Subtitles support disabled', logger.DEBUG)
@@ -106,19 +107,21 @@ class SubtitlesFinder():
         myDB = db.DBConnection()
         today = datetime.date.today().toordinal()
         # you have 5 minutes to understand that one. Good luck
-        sqlResults = myDB.select('SELECT s.show_name, e.showid, e.season, e.episode, e.status, e.subtitles, e.subtitles_searchcount AS searchcount, e.subtitles_lastsearch AS lastsearch, e.location, (? - e.airdate) AS airdate_daydiff FROM tv_episodes AS e INNER JOIN tv_shows AS s ON (e.showid = s.tvdb_id) WHERE s.subtitles = 1 AND e.subtitles NOT LIKE (?) AND ((e.subtitles_searchcount <= 2 AND (? - e.airdate) > 7) OR (e.subtitles_searchcount <= 7 AND (? - e.airdate) <= 7)) AND (e.status IN ('+','.join([str(x) for x in Quality.DOWNLOADED])+') OR (e.status IN ('+','.join([str(x) for x in Quality.SNATCHED + Quality.SNATCHED_PROPER])+') AND e.location != ""))', [today, wantedLanguages(True), today, today])
+        sqlResults = myDB.select('SELECT s.show_name, e.showid, e.season, e.episode, e.status, e.subtitles, e.subtitles_searchcount AS searchcount, e.subtitles_lastsearch AS lastsearch, e.location, (? - e.airdate) AS airdate_daydiff FROM tv_episodes AS e INNER JOIN tv_shows AS s ON (e.showid = s.indexer_id) WHERE s.subtitles = 1 AND e.subtitles NOT LIKE (?) AND ((e.subtitles_searchcount <= 2 AND (? - e.airdate) > 7) OR (e.subtitles_searchcount <= 7 AND (? - e.airdate) <= 7)) AND (e.status IN ('+','.join([str(x) for x in Quality.DOWNLOADED])+') OR (e.status IN ('+','.join([str(x) for x in Quality.SNATCHED + Quality.SNATCHED_PROPER])+') AND e.location != ""))', [today, wantedLanguages(True), today, today])
         if len(sqlResults) == 0:
             logger.log('No subtitles to download', logger.MESSAGE)
             return
         
         rules = self._getRules()
-        now = datetime.datetime.now();
+        now = datetime.datetime.now()
         for epToSub in sqlResults:
+
             if not ek.ek(os.path.isfile, epToSub['location']):
                 logger.log('Episode file does not exist, cannot download subtitles for episode %dx%d of show %s' % (epToSub['season'], epToSub['episode'], epToSub['show_name']), logger.DEBUG)
                 continue
             
             # Old shows rule
+            throwaway = datetime.datetime.strptime('20110101', '%Y%m%d')
             if ((epToSub['airdate_daydiff'] > 7 and epToSub['searchcount'] < 2 and now - datetime.datetime.strptime(epToSub['lastsearch'], '%Y-%m-%d %H:%M:%S') > datetime.timedelta(hours=rules['old'][epToSub['searchcount']])) or
                 # Recent shows rule 
                 (epToSub['airdate_daydiff'] <= 7 and epToSub['searchcount'] < 7 and now - datetime.datetime.strptime(epToSub['lastsearch'], '%Y-%m-%d %H:%M:%S') > datetime.timedelta(hours=rules['new'][epToSub['searchcount']]))):

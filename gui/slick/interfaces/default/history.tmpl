@@ -119,7 +119,7 @@
         #end if
       #else
         #if $hItem["provider"] > 0
-          #if $curStatus == SNATCHED:
+          #if $curStatus in [SNATCHED, FAILED]:
             #set $provider = $providers.getProviderClass($generic.GenericProvider.makeID($hItem["provider"]))
             #if $provider != None: 
               <img src="$sbRoot/images/providers/<%=provider.imageName()%>" width="16" height="16" alt="$provider.name" title="$provider.name"/>
@@ -160,7 +160,7 @@
     <td align="center" provider="<%=str(sorted(hItem["actions"])[0]["provider"])%>">
       #for $action in sorted($hItem["actions"]):
         #set $curStatus, $curQuality = $Quality.splitCompositeStatus(int($action["action"]))
-          #if $curStatus == SNATCHED:
+          #if $curStatus in [SNATCHED, FAILED]:
           #set $provider = $providers.getProviderClass($generic.GenericProvider.makeID($action["provider"]))
             #if $provider != None: 
               <img src="$sbRoot/images/providers/<%=provider.imageName()%>" width="16" height="16" alt="$provider.name" style="cursor: help;" title="$provider.name: $os.path.basename($action["resource"])"/>

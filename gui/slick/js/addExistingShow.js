@@ -13,12 +13,12 @@ $(document).ready(function() {
 
         var dirArr = new Array();
 
-        $('.dirCheck').each(function() {
-      
+        $('.dirCheck').each(function(i,w) {
         if (this.checked == true) {
-           dirArr.push(encodeURIComponent($(this).attr('id')));
+            var show = $(this).attr('id');
+            var indexer = $(this).closest('tr').find('select').val();
+            dirArr.push(encodeURIComponent(indexer + '|' + show));
         }
-
         });  
 
         if (dirArr.length == 0)
@@ -70,9 +70,9 @@ $(document).ready(function() {
     });
     
     $('.dir_check').live('click', loadContent);
-   
+
     $('.showManage').live('click', function() {
       $( "#tabs" ).tabs( 'select', 0 );
     });
-    
+
 });

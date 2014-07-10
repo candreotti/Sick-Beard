@@ -163,7 +163,7 @@
     #if $curLoadingShow.show == None:
     Loading... ($curLoadingShow.show_name)
     #else:
-    <a href="displayShow?show=$curLoadingShow.show.tvdbid">$curLoadingShow.show.name</a>
+    <a href="displayShow?show=$curLoadingShow.show.indexerid">$curLoadingShow.show.name</a>
     #end if
     </td>
     <td></td>
@@ -179,9 +179,10 @@ $myShowList.sort(lambda x, y: cmp(x.name, y.name))
 #for $curShow in $myShowList:
 #set $curEp = $curShow.nextEpisode()
 
-#set $curShowDownloads = [x[1] for x in $downloadedEps if int(x[0]) == $curShow.tvdbid]
-#set $curShowDownloadable = [x[1] for x in $downloadableEps if int(x[0]) == $curShow.tvdbid]
-#set $curShowAll = [x[1] for x in $allEps if int(x[0]) == $curShow.tvdbid]
+#set $curShowDownloads = [x[1] for x in $downloadedEps if int(x[0]) == $curShow.indexerid]
+#set $curShowDownloadable = [x[1] for x in $downloadableEps if int(x[0]) == $curShow.indexerid]
+
+#set $curShowAll = [x[1] for x in $allEps if int(x[0]) == $curShow.indexerid]
 #if len($curShowAll) != 0:
   #if len($curShowDownloads) != 0:
     #if len($curShowDownloadable) != 0:
@@ -227,24 +228,24 @@ $myShowList.sort(lambda x, y: cmp(x.name, y.name))
     #if $layout == 'poster':
 	    <td>
 	    	<div class="imgHomeWrapper $layout">
-		    	<a href="$sbRoot/showPoster/?show=$curShow.tvdbid&amp;which=$layout" rel="dialog" title="$curShow.name">
-		    		<img src="$sbRoot/showPoster/?show=$curShow.tvdbid&amp;which=$which_thumb" class="$layout" alt="$curShow.tvdbid"/>
+		    	<a href="$sbRoot/showPoster/?show=$curShow.indexerid&amp;which=$layout" rel="dialog" title="$curShow.name">
+		    		<img src="$sbRoot/showPoster/?show=$curShow.indexerid&amp;which=$which_thumb" class="$layout" alt="$curShow.indexerid"/>
 		    	</a>
 	    	</div>
 	    </td>
-    	<td class="tvShow"><a href="$sbRoot/home/displayShow?show=$curShow.tvdbid">$curShow.name</a></td>
+    	<td class="tvShow"><a href="$sbRoot/home/displayShow?show=$curShow.indexerid">$curShow.name</a></td>
 	#else if $layout == 'banner':
     	<td style="display: none;"/>
 	    <td>
 	    	<span style="display: none;">$curShow.name</span>
 	    	<div class="imgHomeWrapper imgHomeWrapperRounded $layout">
-	    		<a href="$sbRoot/home/displayShow?show=$curShow.tvdbid">
-	    		<img src="$sbRoot/showPoster/?show=$curShow.tvdbid&amp;which=$which_thumb" class="$layout" alt="$curShow.tvdbid" title="$curShow.name"/>
+	    		<a href="$sbRoot/home/displayShow?show=$curShow.indexerid">
+	    		<img src="$sbRoot/showPoster/?show=$curShow.indexerid&amp;which=$which_thumb" class="$layout" alt="$curShow.indexerid" title="$curShow.name"/>
 	    	</div>
 	    </td>
 	#else if $layout == 'simple':
 	    <td style="display: none;"/>
-	    <td class="tvShow"><a href="$sbRoot/home/displayShow?show=$curShow.tvdbid">$curShow.name</a></td>
+	    <td class="tvShow"><a href="$sbRoot/home/displayShow?show=$curShow.indexerid">$curShow.name</a></td>
     #end if
     <!--<td align="center">$curShow.network</td>//-->
     <td align="center" style="color: #555555;font-weight:bold;">
@@ -264,15 +265,15 @@ $myShowList.sort(lambda x, y: cmp(x.name, y.name))
 #else:
     <td align="center"><span class="quality Custom">Custom</span></td>
 #end if
-    <td align="center"><span style="display: none;">$dlStat</span><div id="progressbar$curShow.tvdbid" style="position:relative;"></div>
+    <td align="center"><span style="display: none;">$dlStat</span><div id="progressbar$curShow.indexerid" style="position:relative;"></div>
         <script type="text/javascript">
         <!--
             \$(function() {
-               \$("\#progressbar$curShow.tvdbid").progressbar({
+               \$("\#progressbar$curShow.indexerid").progressbar({
        			value: parseInt($nom1) * 100 / parseInt($den) / 1000 });
-               \$("\#progressbar$curShow.tvdbid").append( "<div class='progressbarText'>$dlStat</div>" )
+               \$("\#progressbar$curShow.indexerid").append( "<div class='progressbarText'>$dlStat</div>" )
 				var progressBarWidth = parseInt($nom1) * 100 / parseInt($den) + "%"
-               \$("\#progressbar$curShow.tvdbid > .ui-progressbar-value").animate({ width: progressBarWidth }, 1000);
+               \$("\#progressbar$curShow.indexerid > .ui-progressbar-value").animate({ width: progressBarWidth }, 1000);
             });
         //-->
         </script>

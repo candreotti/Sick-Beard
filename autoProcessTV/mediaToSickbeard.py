@@ -35,6 +35,7 @@ logdirsetting = config.get("General", "log_dir") if config.get("General", "log_d
 logdir = os.path.normpath(os.path.join(sickbeardPath, logdirsetting))
 logfile = os.path.join(logdir, 'sickbeard.log')
 
+
 try:
     handler = logging.FileHandler(logfile)
 except:
@@ -198,9 +199,9 @@ def main():
     print "Opening URL: " + url + ' with params=' + str(params)
     
     try:
-        response = requests.get(url, auth=(username, password), params=params)
+        response = requests.get(url, auth=(username, password), params=params, verify=False)
     except Exception, e:
-        scriptlogger.error(u': Unknown exception raised when opening url: ' + ex(e))
+        scriptlogger.error(u': Unknown exception raised when opening url: ' + str(e))
         time.sleep(3)
         sys.exit()
     

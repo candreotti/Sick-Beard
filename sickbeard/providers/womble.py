@@ -24,18 +24,17 @@ from sickbeard import tvcache
 
 
 class WombleProvider(generic.NZBProvider):
-
     def __init__(self):
         generic.NZBProvider.__init__(self, "Womble's Index")
+        self.enabled = False
         self.cache = WombleCache(self)
         self.url = 'http://newshost.co.za/'
 
     def isEnabled(self):
-        return sickbeard.WOMBLE
+        return self.enabled
 
 
 class WombleCache(tvcache.TVCache):
-
     def __init__(self, provider):
         tvcache.TVCache.__init__(self, provider)
         # only poll Womble's Index every 15 minutes max
@@ -44,10 +43,10 @@ class WombleCache(tvcache.TVCache):
     def _getRSSData(self):
         url = self.provider.url + 'rss/?sec=TV-x264&fr=false'
         logger.log(u"Womble's Index cache update URL: " + url, logger.DEBUG)
-        data = self.provider.getURL(url)
-        return data
+        return self.getRSSFeed(url)
 
     def _checkAuth(self, data):
         return data != 'Invalid Link'
+
 
 provider = WombleProvider()

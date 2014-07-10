@@ -18,24 +18,28 @@
 
 from __future__ import with_statement
 
-import datetime
 import time
+import traceback
+import threading
 
 import sickbeard
 from sickbeard import db, logger, common, exceptions, helpers
-from sickbeard import generic_queue
+from sickbeard import generic_queue, scheduler
 from sickbeard import search, failed_history, history
 from sickbeard import ui
-from sickbeard.common import Quality
+from sickbeard.exceptions import ex
+from sickbeard.search import pickBestResult
+
+search_queue_lock = threading.Lock()
 
 BACKLOG_SEARCH = 10
-RSS_SEARCH = 20
+DAILY_SEARCH = 20
+FAILED_SEARCH = 30
 MANUAL_SEARCH = 30
 DOWNLOADABLE_SEARCH = 5
 
 
 class SearchQueue(generic_queue.GenericQueue):
-
     def __init__(self):
         generic_queue.GenericQueue.__init__(self)
         self.queue_name = "SEARCHQUEUE"
@@ -46,19 +50,23 @@ class SearchQueue(generic_queue.GenericQueue):
                 return True
         return False
 
-    def is_ep_in_queue(self, ep_obj):
-        for cur_item in self.queue:
-            if isinstance(cur_item, ManualSearchQueueItem) and cur_item.ep_obj == ep_obj:
-                return True
-        return False
-
     def pause_backlog(self):
+        self.min_priority = generic_queue.QueuePriorities.HIGH
+
+    def pause_downloadableSearch(self):
         self.min_priority = generic_queue.QueuePriorities.HIGH
 
     def unpause_backlog(self):
         self.min_priority = 0
 
+    def unpause_downloadableSearch(self):
+        self.min_priority = 0
+
     def is_backlog_paused(self):
+        # backlog priorities are NORMAL, this should be done properly somewhere
+        return self.min_priority >= generic_queue.QueuePriorities.NORMAL
+
+    def is_downloadable_search_paused(self):
         # backlog priorities are NORMAL, this should be done properly somewhere
         return self.min_priority >= generic_queue.QueuePriorities.NORMAL
 
@@ -68,118 +76,148 @@ class SearchQueue(generic_queue.GenericQueue):
                 return True
         return False
 
+    def is_dailysearch_in_progress(self):
+        for cur_item in self.queue + [self.currentItem]:
+            if isinstance(cur_item, DailySearchQueueItem):
+                return True
+        return False
+
+    def is_downloadable_search_in_progress(self):
+        for cur_item in self.queue + [self.currentItem]:
+            if isinstance(cur_item, DownloadSearchQueueItem):
+                return True
+        return False
+
     def add_item(self, item):
-        if isinstance(item, RSSSearchQueueItem):
+
+        if isinstance(item, DailySearchQueueItem) and not self.is_in_queue(item.show, item.segment):
             generic_queue.GenericQueue.add_item(self, item)
         # don't do duplicates
         elif isinstance(item, BacklogQueueItem) and not self.is_in_queue(item.show, item.segment):
             generic_queue.GenericQueue.add_item(self, item)
-        elif isinstance(item, ManualSearchQueueItem) and not self.is_ep_in_queue(item.ep_obj):
+        elif isinstance(item, ManualSearchQueueItem) and not self.is_in_queue(item.show, item.segment):
             generic_queue.GenericQueue.add_item(self, item)
         elif isinstance(item, FailedQueueItem) and not self.is_in_queue(item.show, item.segment):
             generic_queue.GenericQueue.add_item(self, item)
-	elif isinstance(item, DownloadSearchQueueItem) and not self.is_in_queue(item.show, item.segment):
+        elif isinstance(item, DownloadSearchQueueItem) and not self.is_in_queue(item.show, item.segment):
             generic_queue.GenericQueue.add_item(self, item)
         else:
             logger.log(u"Not adding item, it's already in the queue", logger.DEBUG)
+
 
 class DownloadSearchQueueItem(generic_queue.QueueItem):
     def __init__(self, show, segment):
         generic_queue.QueueItem.__init__(self, 'Downloadable Search', DOWNLOADABLE_SEARCH)
         self.priority = generic_queue.QueuePriorities.LOW
-        self.thread_name = 'DOWNLOADABLE_SEARCH-' + str(show.tvdbid)
+        self.thread_name = 'DOWNLOADABLE_SEARCH-' + str(show.indexerid)
 
+        self.success = None
         self.show = show
         self.segment = segment
 
-        logger.log(u"Seeing if is available any episodes from " + self.show.name + " season " + str(self.segment))
-
-        myDB = db.DBConnection()
-
-        # see if there is anything in this season worth searching for
-        if not self.show.air_by_date:
-            statusResults = myDB.select("SELECT status FROM tv_episodes WHERE showid = ? AND season = ?", [self.show.tvdbid, self.segment])
-        else:
-            segment_year, segment_month = map(int, self.segment.split('-'))
-            min_date = datetime.date(segment_year, segment_month, 1)
-
-            # it's easier to just hard code this than to worry about rolling the year over or making a month length map
-            if segment_month == 12:
-                max_date = datetime.date(segment_year, 12, 31)
-            else:
-                max_date = datetime.date(segment_year, segment_month + 1, 1) - datetime.timedelta(days=1)
-
-            statusResults = myDB.select("SELECT status FROM tv_episodes WHERE showid = ? AND airdate >= ? AND airdate <= ?",
-                                        [self.show.tvdbid, min_date.toordinal(), max_date.toordinal()])
-
-        anyQualities, bestQualities = common.Quality.splitQuality(self.show.quality) #@UnusedVariable
-        self.availableSeason = self._available_any_episodes(statusResults, bestQualities)
-
     def execute(self):
-
         generic_queue.QueueItem.execute(self)
 
-        results = search.findSeason(self.show, self.segment, "skipEp")
+        for season in self.segment:
+            sickbeard.searchDownloadable.DownloadableSearcher.currentSearchInfo = {'title': self.show.name + " Season " + str(season)}
 
-        # mark downloadable whatever we find
-	for result in results:
-            search.downloadableEpisode(result)
-            
+            downloadableEps = self.segment[season]
+
+            try:
+                logger.log("Beginning downloadable search for [" + self.show.name + "]")
+                searchResult = search.searchProviders(self.show, season, downloadableEps, "skipEp", False)
+
+                # reset thread back to original name
+                threading.currentThread().name = self.thread_name
+
+                if searchResult:
+                    for result in searchResult:
+                        # just use the first result for now
+                        logger.log(u"Marking Available " + result.name + " from " + result.provider.name)
+                        search.downloadableEpisode(result)
+
+                        # give the CPU a break
+                        time.sleep(common.cpu_presets[sickbeard.CPU_PRESET])
+
+                else:
+                    logger.log(u"No available episodes found during downloadable search for [" + self.show.name + "]")
+
+            except Exception:
+                logger.log(traceback.format_exc(), logger.DEBUG)
+
         self.finish()
 
-    def _available_any_episodes(self, statusResults, bestQualities):
-
-        availableSeason = False
-
-        # check through the list of statuses to see if we want any
-        for curStatusResult in statusResults:
-            curCompositeStatus = int(curStatusResult["status"])
-            curStatus, curQuality = common.Quality.splitCompositeStatus(curCompositeStatus)
-
-            if bestQualities:
-                highestBestQuality = max(bestQualities)
-            else:
-                highestBestQuality = 0
-
-            if curStatus == common.SKIPPED:
-                availableSeason = True
-                break
-
-        return availableSeason
-
-class ManualSearchQueueItem(generic_queue.QueueItem):
-    def __init__(self, ep_obj):
-        generic_queue.QueueItem.__init__(self, 'Manual Search', MANUAL_SEARCH)
+class DailySearchQueueItem(generic_queue.QueueItem):
+    def __init__(self, show, segment):
+        generic_queue.QueueItem.__init__(self, 'Daily Search', DAILY_SEARCH)
         self.priority = generic_queue.QueuePriorities.HIGH
-
-        self.ep_obj = ep_obj
-
-        self.success = None
+        self.thread_name = 'DAILYSEARCH-' + str(show.indexerid)
+        self.show = show
+        self.segment = segment
 
     def execute(self):
         generic_queue.QueueItem.execute(self)
 
-        logger.log("Beginning manual search for " + self.ep_obj.prettyName())
 
-        foundEpisode = search.findEpisode(self.ep_obj, manualSearch=True)
-        result = False
+        logger.log("Beginning daily search for [" + self.show.name + "]")
+        foundResults = search.searchForNeededEpisodes(self.segment)
 
-        if not foundEpisode:
-            ui.notifications.message('No downloads were found', "Couldn't find a download for <i>%s</i>" % self.ep_obj.prettyName())
-            logger.log(u"Unable to find a download for " + self.ep_obj.prettyName())
+        # reset thread back to original name
+        threading.currentThread().name = self.thread_name
 
+        if not len(foundResults):
+            logger.log(u"No needed episodes found during daily search for [" + self.show.name + "]")
         else:
+            for result in foundResults:
+                logger.log(u"Analizing Show: " + curResult.episodes[0].show.name + ", indexerid: " + str(curResult.episodes[0].show.indexerid), logger.DEBUG)
+                # just use the first result for now
+                if not curResult.episodes[0].show.paused:
+                    logger.log(u"Downloading " + result.name + " from " + result.provider.name)
+                    search.snatchEpisode(result)
+                else:
+                    logger.log(u"Mark Downloadable " + result.name + " from " + result.provider.name)
+                    search.downloadableEpisode(curResult)
 
-            # just use the first result for now
-            logger.log(u"Downloading episode from " + foundEpisode.url)
-            result = search.snatchEpisode(foundEpisode)
-            providerModule = foundEpisode.provider
-            if not result:
-                ui.notifications.error('Error while attempting to snatch ' + foundEpisode.name+', check your logs')
-            elif providerModule == None:
-                ui.notifications.error('Provider is configured incorrectly, unable to download')
+                # give the CPU a break
+                time.sleep(common.cpu_presets[sickbeard.CPU_PRESET])
 
-        self.success = result
+        generic_queue.QueueItem.finish(self)
+
+class ManualSearchQueueItem(generic_queue.QueueItem):
+    def __init__(self, show, segment):
+        generic_queue.QueueItem.__init__(self, 'Manual Search', MANUAL_SEARCH)
+        self.priority = generic_queue.QueuePriorities.HIGH
+        self.thread_name = 'MANUAL-' + str(show.indexerid)
+        self.success = None
+        self.show = show
+        self.segment = segment
+
+    def execute(self):
+        generic_queue.QueueItem.execute(self)
+
+        try:
+            logger.log("Beginning manual search for [" + self.segment.prettyName() + "]")
+            searchResult = search.searchProviders(self.show, self.segment.season, [self.segment], "wantEP", True)
+
+            # reset thread back to original name
+            threading.currentThread().name = self.thread_name
+
+            if searchResult:
+                # just use the first result for now
+                logger.log(u"Downloading " + searchResult[0].name + " from " + searchResult[0].provider.name)
+                self.success = search.snatchEpisode(searchResult[0])
+
+                # give the CPU a break
+                time.sleep(common.cpu_presets[sickbeard.CPU_PRESET])
+
+            else:
+                ui.notifications.message('No downloads were found',
+                                         "Couldn't find a download for <i>%s</i>" % self.segment.prettyName())
+
+                logger.log(u"Unable to find a download for " + self.segment.prettyName())
+
+        except Exception:
+            logger.log(traceback.format_exc(), logger.DEBUG)
 
     def finish(self):
         # don't let this linger if something goes wrong
@@ -187,182 +225,89 @@ class ManualSearchQueueItem(generic_queue.QueueItem):
             self.success = False
         generic_queue.QueueItem.finish(self)
 
-class RSSSearchQueueItem(generic_queue.QueueItem):
-    def __init__(self):
-        generic_queue.QueueItem.__init__(self, 'RSS Search', RSS_SEARCH)
-
-    def execute(self):
-        generic_queue.QueueItem.execute(self)
-
-        self._changeMissingEpisodes()
-
-        logger.log(u"Beginning search for new episodes on RSS")
-
-        foundResults = search.searchForNeededEpisodes()
-
-        if not len(foundResults):
-            logger.log(u"No needed episodes found on the RSS feeds")
-
-        for curResult in foundResults:
-
-            logger.log(u"Analizing Show: " + curResult.episodes[0].show.name + ", tvdb_id: " + str(curResult.episodes[0].show.tvdbid), logger.DEBUG)
-
-            if not curResult.episodes[0].show.paused:
-                search.snatchEpisode(curResult)
-                time.sleep(2)
-            else:
-                search.downloadableEpisode(curResult)
-                time.sleep(1)
-
-        generic_queue.QueueItem.finish(self)
-
-    def _changeMissingEpisodes(self):
-
-        logger.log(u"Changing all old missing episodes to status WANTED/SKIPPED")
-
-        curDate = datetime.date.today().toordinal()
-
-        myDB = db.DBConnection()
-        sqlResults = myDB.select("SELECT * FROM tv_episodes WHERE status = ? AND airdate < ?", [common.UNAIRED, curDate])
-
-        for sqlEp in sqlResults:
-
-            try:
-                show = helpers.findCertainShow(sickbeard.showList, int(sqlEp["showid"]))
-            except exceptions.MultipleShowObjectsException:
-                logger.log(u"ERROR: expected to find a single show matching " + sqlEp["showid"])
-                return None
-
-            if show == None:
-                logger.log(u"Unable to find the show with ID " + str(sqlEp["showid"]) + " in your show list! DB value was " + str(sqlEp), logger.ERROR)
-                return None
-
-            ep = show.getEpisode(sqlEp["season"], sqlEp["episode"])
-            with ep.lock:
-                if ep.show.paused:
-                    ep.status = common.SKIPPED
-                else:
-
-                    myDB = db.DBConnection()
-                    sql_selection="SELECT show_name, tvdb_id, season, episode, paused FROM (SELECT * FROM tv_shows s,tv_episodes e WHERE s.tvdb_id = e.showid) T1 WHERE T1.paused = 0 and T1.episode_id IN (SELECT T2.episode_id FROM tv_episodes T2 WHERE T2.showid = T1.tvdb_id and T2.status in (?,?,?,?) and T2.season!=0 ORDER BY T2.season,T2.episode LIMIT 1) ORDER BY T1.show_name,season,episode"
-                    results = myDB.select(sql_selection, [common.SNATCHED, common.WANTED, common.SKIPPED, common.DOWNLOADABLE])
-
-                    show_sk = [show for show in results if show["tvdb_id"] == sqlEp["showid"]]
-		    if not show_sk:
-			ep.status = common.WANTED
-                    else:
-                        sn_sk = show_sk[0]["season"]
-                        ep_sk = show_sk[0]["episode"]
-                        if (int(sn_sk)*100+int(ep_sk)) < (int(sqlEp["season"])*100+int(sqlEp["episode"])) or not show_sk:
-                    	    ep.status = common.SKIPPED
-		        else:
-                    	    ep.status = common.WANTED
-                ep.saveToDB()
-
 class BacklogQueueItem(generic_queue.QueueItem):
     def __init__(self, show, segment):
         generic_queue.QueueItem.__init__(self, 'Backlog', BACKLOG_SEARCH)
         self.priority = generic_queue.QueuePriorities.LOW
-        self.thread_name = 'BACKLOG-' + str(show.tvdbid)
-
+        self.thread_name = 'BACKLOG-' + str(show.indexerid)
+        self.success = None
         self.show = show
         self.segment = segment
 
-        logger.log(u"Seeing if we need any episodes from " + self.show.name + " season " + str(self.segment))
-
-        myDB = db.DBConnection()
-
-        # see if there is anything in this season worth searching for
-        if not self.show.air_by_date:
-            statusResults = myDB.select("SELECT status FROM tv_episodes WHERE showid = ? AND season = ?", [self.show.tvdbid, self.segment])
-        else:
-            segment_year, segment_month = map(int, self.segment.split('-'))
-            min_date = datetime.date(segment_year, segment_month, 1)
-
-            # it's easier to just hard code this than to worry about rolling the year over or making a month length map
-            if segment_month == 12:
-                max_date = datetime.date(segment_year, 12, 31)
-            else:
-                max_date = datetime.date(segment_year, segment_month + 1, 1) - datetime.timedelta(days=1)
-
-            statusResults = myDB.select("SELECT status FROM tv_episodes WHERE showid = ? AND airdate >= ? AND airdate <= ?",
-                                        [self.show.tvdbid, min_date.toordinal(), max_date.toordinal()])
-
-        anyQualities, bestQualities = common.Quality.splitQuality(self.show.quality) #@UnusedVariable
-        self.wantSeason = self._need_any_episodes(statusResults, bestQualities)
-
     def execute(self):
-
         generic_queue.QueueItem.execute(self)
 
-        results = search.findSeason(self.show, self.segment)
+        for season in self.segment:
+            sickbeard.searchBacklog.BacklogSearcher.currentSearchInfo = {'title': self.show.name + " Season " + str(season)}
 
-        # download whatever we find
-        for curResult in results:
-            search.snatchEpisode(curResult)
-            time.sleep(5)
+            wantedEps = self.segment[season]
+
+            try:
+                logger.log("Beginning backlog search for [" + self.show.name + "]")
+                searchResult = search.searchProviders(self.show, season, wantedEps, "wantEP", False)
+
+                # reset thread back to original name
+                threading.currentThread().name = self.thread_name
+
+                if searchResult:
+                    for result in searchResult:
+                        # just use the first result for now
+                        logger.log(u"Downloading " + result.name + " from " + result.provider.name)
+                        search.snatchEpisode(result)
+
+                        # give the CPU a break
+                        time.sleep(common.cpu_presets[sickbeard.CPU_PRESET])
+
+                else:
+                    logger.log(u"No needed episodes found during backlog search for [" + self.show.name + "]")
+
+            except Exception:
+                logger.log(traceback.format_exc(), logger.DEBUG)
 
         self.finish()
 
-    def _need_any_episodes(self, statusResults, bestQualities):
-
-        wantSeason = False
-
-        # check through the list of statuses to see if we want any
-        for curStatusResult in statusResults:
-            curCompositeStatus = int(curStatusResult["status"])
-            curStatus, curQuality = common.Quality.splitCompositeStatus(curCompositeStatus)
-
-            if bestQualities:
-                highestBestQuality = max(bestQualities)
-            else:
-                highestBestQuality = 0
-
-            # if we need a better one then say yes
-            if (curStatus in (common.DOWNLOADED, common.SNATCHED, common.SNATCHED_PROPER) and curQuality < highestBestQuality) or curStatus == common.WANTED:
-                wantSeason = True
-                break
-
-        return wantSeason
-
 class FailedQueueItem(generic_queue.QueueItem):
-
     def __init__(self, show, segment):
-        generic_queue.QueueItem.__init__(self, 'Retry', MANUAL_SEARCH)
+        generic_queue.QueueItem.__init__(self, 'Retry', FAILED_SEARCH)
         self.priority = generic_queue.QueuePriorities.HIGH
-        self.thread_name = 'RETRY-' + str(show.tvdbid)
-
+        self.thread_name = 'RETRY-' + str(show.indexerid)
         self.show = show
         self.segment = segment
-
         self.success = None
 
     def execute(self):
         generic_queue.QueueItem.execute(self)
 
-        for season, episode in self.segment.iteritems():
-            epObj = self.show.getEpisode(season, episode)
+        for season, episodes in self.segment.items():
+            for epObj in episodes:
+                (release, provider) = failed_history.findRelease(epObj)
+                if release:
+                    logger.log(u"Marking release as bad: " + release)
+                    failed_history.markFailed(epObj)
+                    failed_history.logFailed(release)
+                    history.logFailed(epObj, release, provider)
+                    failed_history.revertEpisode(epObj)
 
-            (release, provider) = failed_history.findRelease(self.show, season, episode)
-            if release:
-                logger.log(u"Marking release as bad: " + release)
-                failed_history.markFailed(self.show, season, episode)
-                failed_history.logFailed(release)
-                history.logFailed(self.show.tvdbid, season, episode, epObj.status, release, provider)
+                    logger.log(
+                        "Beginning failed download search for [" + epObj.prettyName() + "]")
+                    try:
+                        searchResult = search.searchProviders(self.show, season, [epObj], "wantEP", True)
 
-            failed_history.revertEpisode(self.show, season, episode)
+                        # reset thread back to original name
+                        threading.currentThread().name = self.thread_name
 
-        for season, episode in self.segment.iteritems():
-            epObj = self.show.getEpisode(season, episode)
+                        if searchResult:
+                            for result in searchResult:
+                                # just use the first result for now
+                                logger.log(u"Downloading " + result.name + " from " + result.provider.name)
+                                search.snatchEpisode(result)
 
-            if self.show.air_by_date:
-                results = search.findSeason(self.show, str(epObj.airdate)[:7])
-            else:
-                results = search.findSeason(self.show, season)
+                                # give the CPU a break
+                                time.sleep(common.cpu_presets[sickbeard.CPU_PRESET])
 
-            # download whatever we find
-            for curResult in results:
-                self.success = search.snatchEpisode(curResult)
-                time.sleep(5)
+                        else:
+                            logger.log(u"No valid episode found to retry for [" + epObj.prettyName() + "]")
+                    except Exception, e:
+                        logger.log(traceback.format_exc(), logger.DEBUG)
 
         self.finish()

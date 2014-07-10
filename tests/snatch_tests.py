@@ -69,18 +69,19 @@ def test_generator(tvdbdid, show_name, curData, forceSearch):
     def test(self):
         global searchItems
         searchItems = curData["i"]
-        show = TVShow(tvdbdid)
+        show = TVShow(1, tvdbdid)
         show.name = show_name
         show.quality = curData["q"]
         show.saveToDB()
         sickbeard.showList.append(show)
+        episode = None
 
         for epNumber in curData["e"]:
             episode = TVEpisode(show, curData["s"], epNumber)
             episode.status = c.WANTED
             episode.saveToDB()
 
-        bestResult = search.findEpisode(episode, forceSearch)
+        bestResult = search.searchProviders(show, episode.season, episode.episode, forceSearch)
         if not bestResult:
             self.assertEqual(curData["b"], bestResult)
         self.assertEqual(curData["b"], bestResult.name) #first is expected, second is choosen one

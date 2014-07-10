@@ -49,6 +49,7 @@ class SizeAndProvider(InitialSchema):
 
 class History(SizeAndProvider):
     """Snatch history that can't be modified by the user"""
+
     def test(self):
         return self.hasTable('history')
 
@@ -59,11 +60,12 @@ class History(SizeAndProvider):
 
 class HistoryStatus(History):
     """Store episode status before snatch to revert to if necessary"""
+
     def test(self):
         return self.hasColumn('history', 'old_status')
 
     def execute(self):
         self.addColumn('history', 'old_status', 'NUMERIC', Quality.NONE)
-        self.addColumn('history', 'showtvdbid', 'NUMERIC', '-1')
+        self.addColumn('history', 'showid', 'NUMERIC', '-1')
         self.addColumn('history', 'season', 'NUMERIC', '-1')
         self.addColumn('history', 'episode', 'NUMERIC', '-1')

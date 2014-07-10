@@ -33,10 +33,11 @@ from sickbeard import logger, helpers
 
 from common import Quality
 
-def sendNZB(nzb, proper = False):
 
+def sendNZB(nzb, proper=False):
     addToTop = False
     nzbgetprio = 0
+    
     if sickbeard.NZBGET_USE_HTTPS:
         nzbgetXMLrpc = "https://%(username)s:%(password)s@%(host)s/xmlrpc"
     else:
@@ -46,7 +47,8 @@ def sendNZB(nzb, proper = False):
         logger.log(u"No NZBget host found in configuration. Please configure it.", logger.ERROR)
         return False
 
-    url = nzbgetXMLrpc % {"host": sickbeard.NZBGET_HOST, "username": sickbeard.NZBGET_USERNAME, "password": sickbeard.NZBGET_PASSWORD}
+    url = nzbgetXMLrpc % {"host": sickbeard.NZBGET_HOST, "username": sickbeard.NZBGET_USERNAME,
+                          "password": sickbeard.NZBGET_PASSWORD}
 
     nzbGetRPC = xmlrpclib.ServerProxy(url)
     try:
@@ -56,7 +58,9 @@ def sendNZB(nzb, proper = False):
             logger.log(u"Successful connected to NZBget, but unable to send a message" % (nzb.name + ".nzb"), logger.ERROR)
 
     except httplib.socket.error:
-        logger.log(u"Please check your NZBget host and port (if it is running). NZBget is not responding to this combination", logger.ERROR)
+        logger.log(
+            u"Please check your NZBget host and port (if it is running). NZBget is not responding to this combination",
+            logger.ERROR)
         return False
 
     except xmlrpclib.ProtocolError, e:
@@ -71,7 +75,10 @@ def sendNZB(nzb, proper = False):
     # if it aired recently make it high priority and generate DupeKey/Score
     for curEp in nzb.episodes:
         if dupekey == "":
-            dupekey = "Sickbeard-" + str(curEp.show.tvdbid)
+            if curEp.show.indexer == 1:
+                dupekey = "Sickbeard-" + str(curEp.show.indexerid)
+            elif curEp.show.indexer == 2:
+                dupekey = "Sickbeard-tvr" + str(curEp.show.indexerid)
         dupekey += "-" + str(curEp.season) + "." + str(curEp.episode)
         if datetime.date.today() - curEp.airdate <= datetime.timedelta(days=7):
             addToTop = True
@@ -104,17 +111,22 @@ def sendNZB(nzb, proper = False):
                     if (data == None):
                         return False
                     nzbcontent64 = standard_b64encode(data)
-                nzbget_result = nzbGetRPC.append(nzb.name + ".nzb", sickbeard.NZBGET_CATEGORY, addToTop, nzbcontent64)
+            nzbget_result = nzbGetRPC.append(nzb.name + ".nzb", sickbeard.NZBGET_CATEGORY, addToTop, nzbcontent64)
         elif nzbget_version >= 12:
             if nzbcontent64 is not None:
-                nzbget_result = nzbGetRPC.append(nzb.name + ".nzb", sickbeard.NZBGET_CATEGORY, nzbgetprio, False, nzbcontent64, False, dupekey, dupescore, "score")
+                nzbget_result = nzbGetRPC.append(nzb.name + ".nzb", sickbeard.NZBGET_CATEGORY, nzbgetprio, False,
+                                                 nzbcontent64, False, dupekey, dupescore, "score")
             else:
-                nzbget_result = nzbGetRPC.appendurl(nzb.name + ".nzb", sickbeard.NZBGET_CATEGORY, nzbgetprio, False, nzb.url, False, dupekey, dupescore, "score")
+                nzbget_result = nzbGetRPC.appendurl(nzb.name + ".nzb", sickbeard.NZBGET_CATEGORY, nzbgetprio, False,
+                                                    nzb.url, False, dupekey, dupescore, "score")
         else:
             if nzbcontent64 is not None:
-                nzbget_result = nzbGetRPC.append(nzb.name + ".nzb", sickbeard.NZBGET_CATEGORY, nzbgetprio, False, nzbcontent64)
+                nzbget_result = nzbGetRPC.append(nzb.name + ".nzb", sickbeard.NZBGET_CATEGORY, nzbgetprio, False,
+                                                 nzbcontent64)
             else:
-                nzbget_result = nzbGetRPC.appendurl(nzb.name + ".nzb", sickbeard.NZBGET_CATEGORY, nzbgetprio, False, nzb.url)
+                nzbget_result = nzbGetRPC.appendurl(nzb.name + ".nzb", sickbeard.NZBGET_CATEGORY, nzbgetprio, False,
+                                                    nzb.url)
+
         if nzbget_result:
             logger.log(u"NZB sent to NZBget successfully", logger.DEBUG)
             return True

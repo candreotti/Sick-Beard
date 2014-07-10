@@ -44,11 +44,14 @@ $(document).ready(function(){
         } else if (selectedProvider == "utorrent") {
             $('#t_blackhole_settings').hide();
             $('#torrent_settings').show();
-            $('#Torrent_username').show()
+            $('#Torrent_Verify_Cert').hide();
+            $('#Torrent_username').show();
             $('#Torrent_Path').hide();
-            $('#Torrent_Ratio').hide();
+            $('#Torrent_Ratio').show();
+            $('#Torrent_Seed_Time').show();
             $('#Torrent_High_Bandwidth').hide();
-            $('#Torrent_Label').show()
+            $('#Torrent_Label').show();
+            $('#label_warning').text('');
             $('#host_desc').text('uTorrent Host');
             $('#username_desc').text('uTorrent Username');
             $('#password_desc').text('uTorrent Password');
@@ -56,9 +59,11 @@ $(document).ready(function(){
         } else if (selectedProvider == "transmission"){
             $('#t_blackhole_settings').hide();
             $('#torrent_settings').show();
+            $('#Torrent_Verify_Cert').hide();
             $('#Torrent_username').show();
             $('#Torrent_Path').show();
             $('#Torrent_Ratio').show();
+            $('#Torrent_Seed_Time').hide();
             $('#Torrent_High_Bandwidth').show();
             $('#Torrent_Label').hide();
             $('#host_desc').html('Transmission Host');
@@ -68,24 +73,29 @@ $(document).ready(function(){
         } else if (selectedProvider == "deluge"){
             $('#t_blackhole_settings').hide();
             $('#torrent_settings').show();
-            $('#Torrent_Label').show();            
-            $('#Torrent_username').hide();
+            $('#Torrent_Verify_Cert').show();
+            $('#Torrent_Label').show();
+            $('#Torrent_username').show();
             $('#Torrent_Path').show();
             $('#Torrent_Ratio').show();
+            $('#Torrent_Seed_Time').hide();
             $('#Torrent_High_Bandwidth').hide();
             $('#host_desc').text('Deluge Host');
             $('#username_desc').text('Deluge Username');
             $('#password_desc').text('Deluge Password');
             $('#label_desc').text('Deluge Label');
+            $('#label_warning').text('Note: Label plugin must be enabled in Deluge client. No blank spaces are allowed in label name');
             $('#directory_desc').text('Deluge Directory');
         } else if (selectedProvider == "download_station"){
             $('#t_blackhole_settings').hide();
             $('#torrent_settings').show();
+            $('#Torrent_Verify_Cert').hide();
             $('#Torrent_Label').hide();            
             $('#Torrent_username').show();
             $('#Torrent_Paused').hide();
             $('#Torrent_Path').hide();
             $('#Torrent_Ratio').hide();
+            $('#Torrent_Seed_Time').hide();
             $('#Torrent_High_Bandwidth').hide();
             $('#host_desc').text('Synology Host');
             $('#username_desc').text('Synology Username');
@@ -95,16 +105,19 @@ $(document).ready(function(){
         } else if (selectedProvider == "rtorrent"){
             $('#t_blackhole_settings').hide();
             $('#torrent_settings').show();
+            $('#Torrent_Verify_Cert').hide();
             $('#Torrent_Label').show();            
             $('#Torrent_username').show();
             $('#Torrent_Paused').hide();
             $('#Torrent_Path').show();
-            $('#Torrent_Ratio').show();
+            $('#Torrent_Ratio').hide();
+            $('#Torrent_Seed_Time').hide();
             $('#Torrent_High_Bandwidth').hide();
             $('#host_desc').text('rTorrent Host');
             $('#username_desc').text('rTorrent Username');
             $('#password_desc').text('rTorrent Password');
             $('#label_desc').text('rTorrent Label');
+            $('#label_warning').text('');
             $('#directory_desc').text('rTorrent Directory');
         }
     }

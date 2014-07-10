@@ -17,13 +17,14 @@
 # You should have received a copy of the GNU General Public License
 # along with Sick Beard.  If not, see <http://www.gnu.org/licenses/>.
 
+import time
 import re
 import traceback
 import datetime
-
+import urlparse
 import sickbeard
 import generic
-from sickbeard.common import Quality
+from sickbeard.common import Quality, cpu_presets
 from sickbeard import logger
 from sickbeard import tvcache
 from sickbeard import db
@@ -34,19 +35,22 @@ from sickbeard.common import Overview
 from sickbeard.exceptions import ex
 from sickbeard import clients
 from lib import requests
+from lib.requests import exceptions
 from bs4 import BeautifulSoup
 from lib.unidecode import unidecode
+from sickbeard.helpers import sanitizeSceneName
+
 
 class SCCProvider(generic.TorrentProvider):
-
-    urls = {'base_url' : 'https://sceneaccess.eu',
-            'login' : 'https://sceneaccess.eu/login',
-            'detail' : 'https://www.sceneaccess.eu/details?id=%s',
-            'search' : 'https://sceneaccess.eu/browse?search=%s&method=1&%s',
-            'nonscene' : 'https://sceneaccess.eu/nonscene?search=%s&method=1&c44=44&c45=44',
-            'archive' : 'https://sceneaccess.eu/archive?search=%s&method=1&c26=26',
-            'download' : 'https://www.sceneaccess.eu/%s',
-            }
+    urls = {'base_url': 'https://sceneaccess.eu',
+            'login': 'https://sceneaccess.eu/login',
+            'detail': 'https://www.sceneaccess.eu/details?id=%s',
+            'search': 'https://sceneaccess.eu/browse?search=%s&method=1&%s',
+            'nonscene': 'https://sceneaccess.eu/nonscene?search=%s&method=1&c44=44&c45=44',
+            'foreign': 'https://sceneaccess.eu/foreign?search=%s&method=1&c34=34&c33=33',
+            'archive': 'https://sceneaccess.eu/archive?search=%s&method=1&c26=26',
+            'download': 'https://www.sceneaccess.eu/%s',
+    }
 
     def __init__(self):
 
@@ -54,16 +58,23 @@ class SCCProvider(generic.TorrentProvider):
 
         self.supportsBacklog = True
 
+        self.enabled = False
+        self.username = None
+        self.password = None
+        self.ratio = None
+        self.minseed = None
+        self.minleech = None
+
         self.cache = SCCCache(self)
 
         self.url = self.urls['base_url']
 
         self.categories = "c27=27&c17=17&c11=11"
 
-        self.session = None
+        self.headers = {'user-agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/32.0.1700.107 Safari/537.36'}
 
     def isEnabled(self):
-        return sickbeard.SCC
+        return self.enabled
 
     def imageName(self):
         return 'scc.png'
@@ -75,53 +86,37 @@ class SCCProvider(generic.TorrentProvider):
 
     def _doLogin(self):
 
-        login_params = {'username': sickbeard.SCC_USERNAME,
-                        'password': sickbeard.SCC_PASSWORD,
+        login_params = {'username': self.username,
+                        'password': self.password,
                         'submit': 'come on in',
-                        }
+        }
 
         self.session = requests.Session()
 
         try:
-            headers = {'user-agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/32.0.1700.107 Safari/537.36'}
-            response = self.session.post(self.urls['login'], data=login_params, headers=headers, timeout=30, verify=False)
+            response = self.session.post(self.urls['login'], data=login_params, headers=self.headers, timeout=30, verify=False)
         except (requests.exceptions.ConnectionError, requests.exceptions.HTTPError), e:
-            logger.log(u'Unable to connect to ' + self.name + ' provider: ' +ex(e), logger.ERROR)
+            logger.log(u'Unable to connect to ' + self.name + ' provider: ' + ex(e), logger.ERROR)
             return False
 
         if re.search('Username or password incorrect', response.text) \
-        or re.search('<title>SceneAccess \| Login</title>', response.text) \
-        or response.status_code == 401:
+                or re.search('<title>SceneAccess \| Login</title>', response.text) \
+                or response.status_code == 401:
             logger.log(u'Invalid username or password for ' + self.name + ' Check your settings', logger.ERROR)
             return False
 
         return True
 
-    def _get_season_search_strings(self, show, season=None):
+    def _get_season_search_strings(self, ep_obj):
 
-        search_string = {'Episode': []}
+        search_string = {'Season': []}
+        for show_name in set(show_name_helpers.allPossibleShowNames(self.show)):
+            if ep_obj.show.air_by_date or ep_obj.show.sports:
+                ep_string = show_name + str(ep_obj.airdate).split('-')[0]
+            else:
+                ep_string = show_name + ' S%02d' % int(ep_obj.scene_season)  #1) showName SXX
 
-        if not show:
-            return []
-
-        seasonEp = show.getAllEpisodes(season)
-
-        wantedEp = [x for x in seasonEp if show.getOverview(x.status) in (Overview.WANTED, Overview.QUAL)]
-
-        #If Every episode in Season is a wanted Episode then search for Season first
-        if wantedEp == seasonEp and not show.air_by_date:
-            search_string = {'Season': [], 'Episode': []}
-            for show_name in set(show_name_helpers.allPossibleShowNames(show)):
-                ep_string = show_name +' S%02d' % int(season) #1) ShowName SXX
-                search_string['Season'].append(ep_string)
-
-        #Building the search string with the episodes we need
-        for ep_obj in wantedEp:
-            search_string['Episode'] += self._get_episode_search_strings(ep_obj)[0]['Episode']
-
-        #If no Episode is needed then return an empty list
-        if not search_string['Episode']:
-            return []
+            search_string['Season'].append(ep_string)
 
         return [search_string]
 
@@ -132,20 +127,35 @@ class SCCProvider(generic.TorrentProvider):
         if not ep_obj:
             return []
 
-        if ep_obj.show.air_by_date:
-            for show_name in set(show_name_helpers.allPossibleShowNames(ep_obj.show)):
-                ep_string = show_name_helpers.sanitizeSceneName(show_name) +' '+ str(ep_obj.airdate)
+        if self.show.air_by_date:
+            for show_name in set(show_name_helpers.allPossibleShowNames(self.show)):
+                ep_string = sanitizeSceneName(show_name) + ' ' + \
+                            str(ep_obj.airdate).replace('-', '|')
+                search_string['Episode'].append(ep_string)
+        elif self.show.sports:
+            for show_name in set(show_name_helpers.allPossibleShowNames(self.show)):
+                ep_string = sanitizeSceneName(show_name) + ' ' + \
+                            str(ep_obj.airdate).replace('-', '|') + '|' + \
+                            ep_obj.airdate.strftime('%b')
                 search_string['Episode'].append(ep_string)
         else:
-            for show_name in set(show_name_helpers.allPossibleShowNames(ep_obj.show)):
-                ep_string = show_name_helpers.sanitizeSceneName(show_name) +' '+ \
-                sickbeard.config.naming_ep_type[2] % {'seasonnumber': ep_obj.season, 'episodenumber': ep_obj.episode}
+            for show_name in set(show_name_helpers.allPossibleShowNames(self.show)):
+                ep_string = show_name_helpers.sanitizeSceneName(show_name) + ' ' + \
+                            sickbeard.config.naming_ep_type[2] % {'seasonnumber': ep_obj.scene_season,
+                                                                  'episodenumber': ep_obj.scene_episode}
 
                 search_string['Episode'].append(re.sub('\s+', ' ', ep_string))
 
         return [search_string]
 
-    def _doSearch(self, search_params, show=None):
+    def _isSection(self, section, text):
+        title = '<title>.+? \| %s</title>' % section
+        if re.search(title, text, re.IGNORECASE):
+            return True
+        else:
+            return False
+
+    def _doSearch(self, search_params, epcount=0, age=0):
 
         results = []
         items = {'Season': [], 'Episode': [], 'RSS': []}
@@ -159,14 +169,20 @@ class SCCProvider(generic.TorrentProvider):
                 if isinstance(search_string, unicode):
                     search_string = unidecode(search_string)
 
+                nonsceneSearchURL = None
+                foreignSearchURL = None
                 if mode == 'Season':
                     searchURL = self.urls['archive'] % (search_string)
-                    data = self.getURL(searchURL)
+                    data = [self.getURL(searchURL, headers=self.headers)]
                 else:
                     searchURL = self.urls['search'] % (search_string, self.categories)
                     nonsceneSearchURL = self.urls['nonscene'] % (search_string)
-                    data = [self.getURL(searchURL), self.getURL(nonsceneSearchURL)]
+                    foreignSearchURL = self.urls['foreign'] % (search_string)
+                    data = [self.getURL(searchURL, headers=self.headers),
+                            self.getURL(nonsceneSearchURL, headers=self.headers),
+                            self.getURL(foreignSearchURL, headers=self.headers)]
                     logger.log(u"Search string: " + nonsceneSearchURL, logger.DEBUG)
+                    logger.log(u"Search string: " + foreignSearchURL, logger.DEBUG)
 
                 logger.log(u"Search string: " + searchURL, logger.DEBUG)
 
@@ -177,11 +193,11 @@ class SCCProvider(generic.TorrentProvider):
                     for dataItem in data:
                         html = BeautifulSoup(dataItem, features=["html5lib", "permissive"])
 
-                        torrent_table = html.find('table', attrs = {'id' : 'torrents-table'})
+                        torrent_table = html.find('table', attrs={'id': 'torrents-table'})
                         torrent_rows = torrent_table.find_all('tr') if torrent_table else []
 
-                        #Continue only if one Release is found
-                        if len(torrent_rows)<2:
+                        #Continue only if at least one Release is found
+                        if len(torrent_rows) < 2:
                             if html.title:
                                 source = self.name + " (" + html.title.string + ")"
                             else:
@@ -193,12 +209,16 @@ class SCCProvider(generic.TorrentProvider):
 
                             try:
                                 link = result.find('td', attrs={'class': 'ttr_name'}).find('a')
-                                url = result.find('td', attrs={'class': 'td_dl'}).find('a')
+                                all_urls = result.find('td', attrs={'class': 'td_dl'}).find_all('a', limit=2)
+                                # Foreign section contain two links, the others one
+                                if self._isSection('Foreign', dataItem):
+                                    url = all_urls[1]
+                                else:
+                                    url = all_urls[0]
                                 title = link.string
                                 if re.search('\.\.\.', title):
                                     details_html = BeautifulSoup(self.getURL(self.url + "/" + link['href']))
                                     title = re.search('(?<=").+(?<!")', details_html.title.string).group(0)
-
                                 download_url = self.urls['download'] % url['href']
                                 id = int(link['href'].replace('details?id=', ''))
                                 seeders = int(result.find('td', attrs={'class': 'ttr_seeders'}).string)
@@ -206,7 +226,7 @@ class SCCProvider(generic.TorrentProvider):
                             except (AttributeError, TypeError):
                                 continue
 
-                            if mode != 'RSS' and seeders == 0:
+                            if mode != 'RSS' and (seeders == 0 or seeders < self.minseed or leechers < self.minleech):
                                 continue
 
                             if not title or not download_url:
@@ -214,15 +234,17 @@ class SCCProvider(generic.TorrentProvider):
 
                             item = title, download_url, id, seeders, leechers
 
-                            if re.search('<title>SceneAccess \| Non-Scene</title>', dataItem):
+                            if self._isSection('Non-Scene', dataItem):
                                 logger.log(u"Found result: " + title + "(" + nonsceneSearchURL + ")", logger.DEBUG)
+                            elif self._isSection('Foreign', dataItem):
+                                logger.log(u"Found result: " + title + "(" + foreignSearchURL + ")", logger.DEBUG)
                             else:
                                 logger.log(u"Found result: " + title + "(" + searchURL + ")", logger.DEBUG)
 
                             items[mode].append(item)
 
                 except Exception, e:
-                    logger.log(u"Failed parsing " + self.name + " Traceback: "  + traceback.format_exc(), logger.ERROR)
+                    logger.log(u"Failed parsing " + self.name + " Traceback: " + traceback.format_exc(), logger.ERROR)
 
             #For each search mode sort all the items by seeders
             items[mode].sort(key=lambda tup: tup[3], reverse=True)
@@ -236,11 +258,11 @@ class SCCProvider(generic.TorrentProvider):
         title, url, id, seeders, leechers = item
 
         if url:
-            url = str(url).replace('&amp;','&')
+            url = str(url).replace('&amp;', '&')
 
         return (title, url)
 
-    def getURL(self, url, headers=None):
+    def getURL(self, url, post_data=None, headers=None, json=False):
 
         if not self.session:
             self._doLogin()
@@ -248,16 +270,20 @@ class SCCProvider(generic.TorrentProvider):
         if not headers:
             headers = {}
 
-        headers.update({'user-agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/32.0.1700.107 Safari/537.36'})
-
         try:
+            # Remove double-slashes from url
+            parsed = list(urlparse.urlparse(url))
+            parsed[2] = re.sub("/{2,}", "/", parsed[2])  # replace two or more / with one
+            url = urlparse.urlunparse(parsed)
+
             response = self.session.get(url, headers=headers, verify=False)
         except (requests.exceptions.ConnectionError, requests.exceptions.HTTPError), e:
-            logger.log(u"Error loading "+self.name+" URL: " + ex(e), logger.ERROR)
+            logger.log(u"Error loading " + self.name + " URL: " + ex(e), logger.ERROR)
             return None
 
         if response.status_code != 200:
-            logger.log(self.name + u" page requested with url " + url +" returned status code is " + str(response.status_code) + ': ' + clients.http_error_code[response.status_code], logger.WARNING)
+            logger.log(self.name + u" page requested with url " + url + " returned status code is " + str(
+                response.status_code) + ': ' + clients.http_error_code[response.status_code], logger.WARNING)
             return None
 
         return response.content
@@ -266,18 +292,21 @@ class SCCProvider(generic.TorrentProvider):
 
         results = []
 
-        sqlResults = db.DBConnection().select('SELECT s.show_name, e.showid, e.season, e.episode, e.status, e.airdate FROM tv_episodes AS e' +
-                                              ' INNER JOIN tv_shows AS s ON (e.showid = s.tvdb_id)' +
-                                              ' WHERE e.airdate >= ' + str(search_date.toordinal()) +
-                                              ' AND (e.status IN (' + ','.join([str(x) for x in Quality.DOWNLOADED]) + ')' +
-                                              ' OR (e.status IN (' + ','.join([str(x) for x in Quality.SNATCHED]) + ')))'
-                                              )
+        sqlResults = db.DBConnection().select(
+            'SELECT s.show_name, e.showid, e.season, e.episode, e.status, e.airdate FROM tv_episodes AS e' +
+            ' INNER JOIN tv_shows AS s ON (e.showid = s.indexer_id)' +
+            ' WHERE e.airdate >= ' + str(search_date.toordinal()) +
+            ' AND (e.status IN (' + ','.join([str(x) for x in Quality.DOWNLOADED]) + ')' +
+            ' OR (e.status IN (' + ','.join([str(x) for x in Quality.SNATCHED]) + ')))'
+        )
         if not sqlResults:
             return []
 
-        for sqlShow in sqlResults:
-            curShow = helpers.findCertainShow(sickbeard.showList, int(sqlShow["showid"]))
-            curEp = curShow.getEpisode(int(sqlShow["season"]), int(sqlShow["episode"]))
+        for sqlshow in sqlResults:
+            self.show = curshow = helpers.findCertainShow(sickbeard.showList, int(sqlshow["showid"]))
+            if not self.show: continue
+            curEp = curshow.getEpisode(int(sqlshow["season"]), int(sqlshow["episode"]))
+
             searchString = self._get_episode_search_strings(curEp, add_string='PROPER|REPACK')
 
             for item in self._doSearch(searchString[0]):
@@ -286,9 +315,11 @@ class SCCProvider(generic.TorrentProvider):
 
         return results
 
+    def seedRatio(self):
+        return self.ratio
+
 
 class SCCCache(tvcache.TVCache):
-
     def __init__(self, provider):
 
         tvcache.TVCache.__init__(self, provider)
@@ -297,6 +328,10 @@ class SCCCache(tvcache.TVCache):
         self.minTime = 20
 
     def updateCache(self):
+
+        # delete anything older then 7 days
+        logger.log(u"Clearing " + self.provider.name + " cache")
+        self._clearCache()
 
         if not self.shouldUpdate():
             return
@@ -309,18 +344,16 @@ class SCCCache(tvcache.TVCache):
         else:
             return []
 
-        logger.log(u"Clearing " + self.provider.name + " cache and updating with new information")
-        self._clearCache()
-
-        ql = []
+        cl = []
         for result in rss_results:
+
             item = (result[0], result[1])
             ci = self._parseItem(item)
             if ci is not None:
-                ql.append(ci)
+                cl.append(ci)
 
         myDB = self._getDB()
-        myDB.mass_action(ql)
+        myDB.mass_action(cl)
 
     def _parseItem(self, item):
 
@@ -329,8 +362,9 @@ class SCCCache(tvcache.TVCache):
         if not title or not url:
             return None
 
-        logger.log(u"Adding item to cache: " + title, logger.DEBUG)
+        logger.log(u"Attempting to cache item:[" + title +"]", logger.DEBUG)
 
         return self._addCacheEntry(title, url)
+
 
 provider = SCCProvider()

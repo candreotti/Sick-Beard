@@ -1,6 +1,6 @@
 $(document).ready(function() { 
 
-    function make_row(tvdb_id, season, episode, name, checked) {
+    function make_row(indexer_id, season, episode, name, checked) {
         if (checked)
             var checked = ' checked';
         else
@@ -10,7 +10,7 @@ $(document).ready(function() {
         
         var row = '';
         row += ' <tr class="'+row_class+'">';
-        row += '  <td><input type="checkbox" class="'+tvdb_id+'-epcheck" name="'+tvdb_id+'-'+season+'x'+episode+'"'+checked+'></td>';
+        row += '  <td><input type="checkbox" class="'+indexer_id+'-epcheck" name="'+indexer_id+'-'+season+'x'+episode+'"'+checked+'></td>';
         row += '  <td>'+season+'x'+episode+'</td>';
         row += '  <td style="width: 100%">'+name+'</td>';
         row += ' </tr>'
@@ -19,25 +19,25 @@ $(document).ready(function() {
     }
 
     $('.allCheck').click(function(){
-        var tvdb_id = $(this).attr('id').split('-')[1];
-        $('.'+tvdb_id+'-epcheck').prop('checked', $(this).prop('checked'));
+        var indexer_id = $(this).attr('id').split('-')[1];
+        $('.'+indexer_id+'-epcheck').prop('checked', $(this).prop('checked'));
     });
 
     $('.get_more_eps').click(function(){
-        var cur_tvdb_id = $(this).attr('id');
-        var checked = $('#allCheck-'+cur_tvdb_id).prop('checked');
-        var last_row = $('tr#'+cur_tvdb_id);
+        var cur_indexer_id = $(this).attr('id');
+        var checked = $('#allCheck-'+cur_indexer_id).prop('checked');
+        var last_row = $('tr#'+cur_indexer_id);
         
         $.getJSON(sbRoot+'/manage/showEpisodeStatuses',
                   {
-                   tvdb_id: cur_tvdb_id,
+                   indexer_id: cur_indexer_id,
                    whichStatus: $('#oldStatus').val()
                   },
                   function (data) {
                       $.each(data, function(season,eps){
                           $.each(eps, function(episode, name) {
                               //alert(season+'x'+episode+': '+name);
-                              last_row.after(make_row(cur_tvdb_id, season, episode, name, checked));
+                              last_row.after(make_row(cur_indexer_id, season, episode, name, checked));
                           });
                       });
                   });

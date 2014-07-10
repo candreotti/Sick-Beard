@@ -28,9 +28,7 @@ except ImportError:
 from sickbeard import exceptions, logger
 from sickbeard import tvcache, show_name_helpers
 
-
 class NZBsRUSProvider(generic.NZBProvider):
-
     def __init__(self):
         generic.NZBProvider.__init__(self, "NZBs'R'US")
         self.cache = NZBsRUSCache(self)
@@ -44,23 +42,23 @@ class NZBsRUSProvider(generic.NZBProvider):
         if sickbeard.NZBSRUS_UID in (None, "") or sickbeard.NZBSRUS_HASH in (None, ""):
             raise exceptions.AuthException("NZBs'R'US authentication details are empty, check your config")
 
-    def _get_season_search_strings(self, show, season):
-        return ['^' + x for x in show_name_helpers.makeSceneSeasonSearchString(show, season)]
+    def _get_season_search_strings(self, ep_obj):
+        return ['^' + x for x in show_name_helpers.makeSceneSeasonSearchString(self.show, ep_obj)]
 
-    def _get_episode_search_strings(self, ep_obj):
-        return ['^' + x for x in show_name_helpers.makeSceneSearchString(ep_obj)]
+    def _get_episode_search_strings(self, ep_obj, add_string=''):
+        return ['^' + x for x in show_name_helpers.makeSceneSearchString(self.show, ep_obj)]
 
-    def _doSearch(self, search, show=None):
+    def _doSearch(self, search, show=None, age=None):
         params = {'uid': sickbeard.NZBSRUS_UID,
                   'key': sickbeard.NZBSRUS_HASH,
                   'xml': 1,
                   'age': sickbeard.USENET_RETENTION,
-                  'lang0': 1,   # English only from CouchPotato
+                  'lang0': 1,  # English only from CouchPotato
                   'lang1': 1,
                   'lang3': 1,
-                  'c91': 1,     # TV:HD
-                  'c104': 1,    # TV:SD-x264
-                  'c75': 1,     # TV:XviD
+                  'c91': 1,  # TV:HD
+                  'c104': 1,  # TV:SD-x264
+                  'c75': 1,  # TV:XviD
                   'searchtext': search}
 
         if not params['age']:
@@ -69,36 +67,32 @@ class NZBsRUSProvider(generic.NZBProvider):
         searchURL = self.url + 'api.php?' + urllib.urlencode(params)
         logger.log(u"NZBS'R'US search url: " + searchURL, logger.DEBUG)
 
-        data = self.getURL(searchURL)
+        data = self.cache.getRSSFeed(searchURL)
         if not data:
             return []
 
-        if not data.startswith('<?xml'):  # Error will be a single line of text
-            logger.log(u"NZBs'R'US error: " + data, logger.ERROR)
-            return []
-
-        root = etree.fromstring(data)
-        if root is None:
+        items = data.entries
+        if not len(items) > 0:
             logger.log(u"Error trying to parse NZBS'R'US XML data.", logger.ERROR)
             logger.log(u"RSS data: " + data, logger.DEBUG)
             return []
-        return root.findall('./results/result')
 
-    def _get_title_and_url(self, element):
-        if element.find('title'):  # RSS feed
-            title = element.find('title').text
-            url = element.find('link').text.replace('&amp;', '&')
+        return items
+
+    def _get_title_and_url(self, item):
+        if item.title:  # RSS feed
+            title = item.title
+            url = item.link
         else:  # API item
-            title = element.find('name').text
-            nzbID = element.find('id').text
-            key = element.find('key').text
+            title = item.name
+            nzbID = item.id
+            key = item.key
             url = self.url + 'nzbdownload_rss.php' + '/' + \
-                nzbID + '/' + sickbeard.NZBSRUS_UID + '/' + key + '/'
+                  nzbID + '/' + sickbeard.NZBSRUS_UID + '/' + key + '/'
         return (title, url)
 
 
 class NZBsRUSCache(tvcache.TVCache):
-
     def __init__(self, provider):
         tvcache.TVCache.__init__(self, provider)
         # only poll NZBs'R'US every 15 minutes max
@@ -113,10 +107,10 @@ class NZBsRUSCache(tvcache.TVCache):
         url += urllib.urlencode(urlArgs)
         logger.log(u"NZBs'R'US cache update URL: " + url, logger.DEBUG)
 
-        data = self.provider.getURL(url)
-        return data
+        return self.getRSSFeed(url)
 
     def _checkAuth(self, data):
         return data != 'Invalid Link'
+
 
 provider = NZBsRUSProvider()

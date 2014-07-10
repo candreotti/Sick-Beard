@@ -38,17 +38,60 @@
 
                     <fieldset class="component-group-list">
                         <div class="field-pair">
-                            <input type="checkbox" name="download_propers" id="download_propers" #if $sickbeard.DOWNLOAD_PROPERS == True then "checked=\"checked\"" else ""# />
+                            <input type="checkbox" name="download_propers" id="download_propers" class="enabler" #if $sickbeard.DOWNLOAD_PROPERS == True then "checked=\"checked\"" else ""# />
                             <label class="clearfix" for="download_propers">
                                 <span class="component-title">Download Propers</span>
                                 <span class="component-desc">Replace original download with "Proper/Repack" if nuked?</span>
                             </label>
                         </div>
-                        
+
+                        <div id="content_download_propers">
+                            <div class="field-pair">
+                                <label class="nocheck clearfix" for="check_propers_interval">
+                                    <span class="component-title">Check Propers Every:</span>
+                                    <span class="component-desc">
+                                        <select id="check_propers_interval" name="check_propers_interval">
+                                            #set $check_propers_interval_text = {'daily': "24 hours", '4h': "4 hours", '90m': "90 mins", '45m': "45 mins", '15m': "15 mins"}
+                                            #for $curInterval in ('daily', '4h', '90m', '45m', '15m'):
+                                              #if $sickbeard.CHECK_PROPERS_INTERVAL == $curInterval:
+                                                #set $selMode = " selected=\"selected\""
+                                              #else
+                                                #set $selMode = ""
+                                              #end if
+                                            <option value="$curInterval"$selMode>$check_propers_interval_text[$curInterval]</option>
+                                            #end for
+                                        </select>
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+
                         <div class="field-pair">
                             <label class="nocheck clearfix">
-                                <span class="component-title">Search Frequency</span>
-                                <input type="text" name="search_frequency" value="$sickbeard.SEARCH_FREQUENCY" size="5" />
+                                <span class="component-title">Backlog Search Frequency</span>
+                                <input type="text" name="backlog_frequency" value="$sickbeard.BACKLOG_FREQUENCY" size="5" />
+                            </label>
+                            <label class="nocheck clearfix">
+                                <span class="component-title">&nbsp;</span>
+                                <span class="component-desc">Time in minutes between searches (eg. 60)</span>
+                            </label>
+                        </div>
+
+                        <div class="field-pair">
+                            <label class="nocheck clearfix">
+                                <span class="component-title">Downloadable Search Frequency</span>
+                                <input type="text" name="downloadable_search_frequency" value="$sickbeard.DOWNLOADABLE_SEARCH_FREQUENCY" size="5" />
+                            </label>
+                            <label class="nocheck clearfix">
+                                <span class="component-title">&nbsp;</span>
+                                <span class="component-desc">Time in minutes between downloadable searches (eg. 60)</span>
+                            </label>
+                        </div>
+
+                        <div class="field-pair">
+                            <label class="nocheck clearfix">
+                                <span class="component-title">Daily Search Frequency</span>
+                                <input type="text" name="dailysearch_frequency" value="$sickbeard.DAILYSEARCH_FREQUENCY" size="5" />
                             </label>
                             <label class="nocheck clearfix">
                                 <span class="component-title">&nbsp;</span>
@@ -89,14 +132,27 @@
                                 <span class="component-desc">Set high priority for downloads of recently aired episodes?</span>
                             </label>
                         </div>
-
-			<div class="field-pair">
-			    <input type="checkbox" name="prefer_episode_releases" id="prefer_episode_releases" #if $sickbeard.PREFER_EPISODE_RELEASES == True then "checked=\"checked\"" else ""# />
-			    <label class="clearfix" for="prefer_episode_releases">
-				<span class="component title">Prefer episode download</span>
-				<span class="component-desc">Prefer to download seperate episodes, not complete seasons?</span>
-			    </label>
-			</div>
+                        <div class="field-pair">
+                            <input type="checkbox" name="dailysearch_startup" id="dailysearch_startup" #if $sickbeard.DAILYSEARCH_STARTUP == True then "checked=\"checked\"" else ""# />
+                            <label class="clearfix" for="dailysearch_startup">
+                                <span class="component title">Daily Search on startup</span>
+                                <span class="component-desc">Start daily search upon startup of SickBeard?</span>
+                            </label>
+                        </div>
+                        <div class="field-pair">
+                            <input type="checkbox" name="backlog_startup" id="backlog_startup" #if $sickbeard.BACKLOG_STARTUP == True then "checked=\"checked\"" else ""# />
+                            <label class="clearfix" for="backlog_startup">
+                                <span class="component title">Process backlog on startup</span>
+                                <span class="component-desc">Start processing backlogged episodes upon startup of SickBeard?</span>
+                            </label>
+                        </div>
+                        <div class="field-pair">
+                            <input type="checkbox" name="downloadable_search_startup" id="downloadable_search_startup" #if $sickbeard.DOWNLOADABLE_SEARCH_STARTUP == True then "checked=\"checked\"" else ""# />
+                            <label class="clearfix" for="downloadable_search_startup">
+                                <span class="component title">Process downloadable search on startup</span>
+                                <span class="component-desc">Start processing downloadable search episodes upon startup of SickBeard?</span>
+                            </label>
+                        </div>
 
                         <div class="clearfix"></div>
                         <input type="submit" class="btn config_submitter" value="Save Changes" /><br/>
@@ -227,7 +283,7 @@
                                     <span class="component-desc"><b>NOTE:</b> You have to enable Secure control in NZBGet and set the correct Secure Port here.</span>
                                 </label>
                             </div>
-                            
+
                             <div class="field-pair">
                                 <label class="nocheck clearfix">
                                     <span class="component-title">NZBget HOST:PORT</span>
@@ -356,6 +412,14 @@
                                 </label>
                             </div>
                             
+                            <div class="field-pair" id="Torrent_Verify_Cert">
+                                <input type="checkbox" name="torrent_verify_cert" class="enabler" id="torrent_verify_cert" #if $sickbeard.TORRENT_VERIFY_CERT == True then "checked=\"checked\"" else ""# />
+                                <label class="nocheck clearfix" for="torrent_verify_cert">
+                        	    <span class="component-title" id="torrent_verify_cert_desc">Verify Certificate</span>
+                                    <span class="component-desc">Disable if you get "Deluge: Authentication Error" in your log</span>
+                                </label>
+                            </div>
+                            
                             <div class="field-pair" id="Torrent_username">
                                 <label class="nocheck clearfix">
                                     <span class="component-title" id="username_desc">Torrent Username</span>
@@ -387,9 +451,9 @@
                                     <span class="component-title">&nbsp;</span>
                                     <span class="component-desc">Add a specific label to Torrent</span>
                                 </label>
-                                <label class="nocheck clearfix" id="deluge_label_warning">
+                                <label class="nocheck clearfix" id="label_warning">
                                     <span class="component-title">&nbsp;</span>
-                                    <span class="component-desc"><b>Note:</b> Label plugin must be enabled in Deluge client</span>
+                                    <span class="component-desc"><b>Note:</b> Adds specific warning to Torrent label</span>
                                 </label>
                             </div>
 
@@ -404,14 +468,14 @@
                                 </label>
                             </div>
 
-                            <div class="field-pair" id="Torrent_Ratio">
+                            <div class="field-pair" id="Torrent_Seed_Time">
                                 <label class="nocheck clearfix">
-                                    <span class="component-title" id="torrent_ratio_desc">Torrent Ratio</span>
-                                    <input type="number" step="0.1" name="torrent_ratio" id="torrent_ratio" value="$sickbeard.TORRENT_RATIO" size="2" />
+                                    <span class="component-title" id="torrent_seed_time_desc">Seed Time</span>
+                                    <input type="number" step="0.1" name="torrent_seed_time" id="torrent_seed_time" value="$sickbeard.TORRENT_SEED_TIME" size="2" />
                                 </label>
                                 <label class="nocheck clearfix">
                                     <span class="component-title">&nbsp;</span>
-                                    <span class="component-desc">Stop transfer when reaching ratio (blank for default)</span>
+                                    <span class="component-desc">Duration (in hours) to seed for (blank for default)</span>
                                 </label>
                             </div>
 

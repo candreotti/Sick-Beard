@@ -19,14 +19,12 @@
 from __future__ import with_statement
 
 import traceback
+import threading
 
 import sickbeard
 
-from lib.tvdb_api import tvdb_exceptions, tvdb_api
 from lib.imdb import _exceptions as imdb_exceptions
-
 from sickbeard.common import SKIPPED, WANTED
-
 from sickbeard.tv import TVShow
 from sickbeard import exceptions, logger, ui, db
 from sickbeard import generic_queue
@@ -34,18 +32,16 @@ from sickbeard import name_cache
 from sickbeard.exceptions import ex
 
 class ShowQueue(generic_queue.GenericQueue):
-
     def __init__(self):
         generic_queue.GenericQueue.__init__(self)
         self.queue_name = "SHOWQUEUE"
-
 
     def _isInQueue(self, show, actions):
         return show in [x.show for x in self.queue if x.action_id in actions]
 
     def _isBeingSomethinged(self, show, actions):
         return self.currentItem != None and show == self.currentItem.show and \
-                self.currentItem.action_id in actions
+               self.currentItem.action_id in actions
 
     def isInUpdateQueue(self, show):
         return self._isInQueue(show, (ShowQueueActions.UPDATE, ShowQueueActions.FORCEUPDATE))
@@ -55,7 +51,7 @@ class ShowQueue(generic_queue.GenericQueue):
 
     def isInRenameQueue(self, show):
         return self._isInQueue(show, (ShowQueueActions.RENAME,))
-    
+
     def isInSubtitleQueue(self, show):
         return self._isInQueue(show, (ShowQueueActions.SUBTITLE,))
 
@@ -70,7 +66,7 @@ class ShowQueue(generic_queue.GenericQueue):
 
     def isBeingRenamed(self, show):
         return self._isBeingSomethinged(show, (ShowQueueActions.RENAME,))
-    
+
     def isBeingSubtitled(self, show):
         return self._isBeingSomethinged(show, (ShowQueueActions.SUBTITLE,))
 
@@ -82,13 +78,16 @@ class ShowQueue(generic_queue.GenericQueue):
     def updateShow(self, show, force=False):
 
         if self.isBeingAdded(show):
-            raise exceptions.CantUpdateException("Show is still being added, wait until it is finished before you update.")
+            raise exceptions.CantUpdateException(
+                "Show is still being added, wait until it is finished before you update.")
 
         if self.isBeingUpdated(show):
-            raise exceptions.CantUpdateException("This show is already being updated, can't update again until it's done.")
+            raise exceptions.CantUpdateException(
+                "This show is already being updated, can't update again until it's done.")
 
         if self.isInUpdateQueue(show):
-            raise exceptions.CantUpdateException("This show is already being updated, can't update again until it's done.")
+            raise exceptions.CantUpdateException(
+                "This show is already being updated, can't update again until it's done.")
 
         if not force:
             queueItemObj = QueueItemUpdate(show)
@@ -105,11 +104,13 @@ class ShowQueue(generic_queue.GenericQueue):
             raise exceptions.CantRefreshException("This show is already being refreshed, not refreshing again.")
 
         if (self.isBeingUpdated(show) or self.isInUpdateQueue(show)) and not force:
-            logger.log(u"A refresh was attempted but there is already an update queued or in progress. Since updates do a refres at the end anyway I'm skipping this request.", logger.DEBUG)
+            logger.log(
+                u"A refresh was attempted but there is already an update queued or in progress. Since updates do a refres at the end anyway I'm skipping this request.",
+                logger.DEBUG)
             return
 
         queueItemObj = QueueItemRefresh(show)
-        
+
         self.add_item(queueItemObj)
 
         return queueItemObj
@@ -121,7 +122,7 @@ class ShowQueue(generic_queue.GenericQueue):
         self.add_item(queueItemObj)
 
         return queueItemObj
-    
+
     def downloadSubtitles(self, show, force=False):
 
         queueItemObj = QueueItemSubtitle(show)
@@ -130,28 +131,32 @@ class ShowQueue(generic_queue.GenericQueue):
 
         return queueItemObj
 
-    def addShow(self, tvdb_id, showDir, default_status=None, quality=None, flatten_folders=None, subtitles=None, lang="it"):
-        queueItemObj = QueueItemAdd(tvdb_id, showDir, default_status, quality, flatten_folders, lang, subtitles)
-        
+    def addShow(self, indexer, indexer_id, showDir, default_status=None, quality=None, flatten_folders=None,
+                subtitles=None, lang="it"):
+        queueItemObj = QueueItemAdd(indexer, indexer_id, showDir, default_status, quality, flatten_folders, lang,
+                                    subtitles)
+
         self.add_item(queueItemObj)
 
         return queueItemObj
 
+
 class ShowQueueActions:
-    REFRESH=1
-    ADD=2
-    UPDATE=3
-    FORCEUPDATE=4
-    RENAME=5
-    SUBTITLE=6
-    
+    REFRESH = 1
+    ADD = 2
+    UPDATE = 3
+    FORCEUPDATE = 4
+    RENAME = 5
+    SUBTITLE = 6
+
     names = {REFRESH: 'Refresh',
-                    ADD: 'Add',
-                    UPDATE: 'Update',
-                    FORCEUPDATE: 'Force Update',
-                    RENAME: 'Rename',
-                    SUBTITLE: 'Subtitle',
-                    }
+             ADD: 'Add',
+             UPDATE: 'Update',
+             FORCEUPDATE: 'Force Update',
+             RENAME: 'Rename',
+             SUBTITLE: 'Subtitle',
+    }
+
 
 class ShowQueueItem(generic_queue.QueueItem):
     """
@@ -164,15 +169,16 @@ class ShowQueueItem(generic_queue.QueueItem):
     - show being force updated
     - show being subtitled
     """
+
     def __init__(self, action_id, show):
         generic_queue.QueueItem.__init__(self, ShowQueueActions.names[action_id], action_id)
         self.show = show
-    
+
     def isInQueue(self):
         return self in sickbeard.showQueueScheduler.action.queue + [sickbeard.showQueueScheduler.action.currentItem] #@UndefinedVariable
 
     def _getName(self):
-        return str(self.show.tvdbid)
+        return str(self.show.indexerid)
 
     def _isLoading(self):
         return False
@@ -183,9 +189,10 @@ class ShowQueueItem(generic_queue.QueueItem):
 
 
 class QueueItemAdd(ShowQueueItem):
-    def __init__(self, tvdb_id, showDir, default_status, quality, flatten_folders, lang, subtitles):
+    def __init__(self, indexer, indexer_id, showDir, default_status, quality, flatten_folders, lang, subtitles):
 
-        self.tvdb_id = tvdb_id
+        self.indexer = indexer
+        self.indexer_id = indexer_id
         self.showDir = showDir
         self.default_status = default_status
         self.quality = quality
@@ -197,7 +204,7 @@ class QueueItemAdd(ShowQueueItem):
 
         # this will initialize self.show to None
         ShowQueueItem.__init__(self, ShowQueueActions.ADD, self.show)
-        
+
     def _getName(self):
         """
         Returns the show name if there is a show object created, if not returns
@@ -225,42 +232,49 @@ class QueueItemAdd(ShowQueueItem):
         ShowQueueItem.execute(self)
 
         logger.log(u"Starting to add show " + self.showDir)
-
+        # make sure the Indexer IDs are valid
         try:
-            # make sure the tvdb ids are valid
-            try:
-                ltvdb_api_parms = sickbeard.TVDB_API_PARMS.copy()
-                if self.lang:
-                    ltvdb_api_parms['language'] = self.lang
-        
-                logger.log(u"TVDB: " + repr(ltvdb_api_parms))
-        
-                t = tvdb_api.Tvdb(**ltvdb_api_parms)
-                s = t[self.tvdb_id]
 
-                # this usually only happens if they have an NFO in their show dir which gave us a TVDB ID that has no proper english version of the show
-                if not s['seriesname']:
-                    logger.log(u"Show in " + self.showDir + " has no name on TVDB, probably the wrong language used to search with.", logger.ERROR)
-                    ui.notifications.error("Unable to add show", "Show in " + self.showDir + " has no name on TVDB, probably the wrong language. Delete .nfo and add manually in the correct language.")
-                    self._finishEarly()
-                    return
-                # if the show has no episodes/seasons
-                if not s:
-                    logger.log(u"Show " + str(s['seriesname']) + " is on TVDB but contains no season/episode data.", logger.ERROR)
-                    ui.notifications.error("Unable to add show", "Show " + str(s['seriesname']) + " is on TVDB but contains no season/episode data.")
-                    self._finishEarly()
-                    return
-            except tvdb_exceptions.tvdb_exception, e:
-                logger.log(u"Error contacting TVDB: " + ex(e), logger.ERROR)
-                ui.notifications.error("Unable to add show", "Unable to look up the show in " + self.showDir + " on TVDB, not using the NFO. Delete .nfo and add manually in the correct language.")
+            lINDEXER_API_PARMS = sickbeard.indexerApi(self.indexer).api_params.copy()
+            if self.lang:
+                lINDEXER_API_PARMS['language'] = self.lang
+
+            logger.log(u"" + str(sickbeard.indexerApi(self.indexer).name) + ": " + repr(lINDEXER_API_PARMS))
+
+            t = sickbeard.indexerApi(self.indexer).indexer(**lINDEXER_API_PARMS)
+            s = t[self.indexer_id]
+
+            # this usually only happens if they have an NFO in their show dir which gave us a Indexer ID that has no proper english version of the show
+            if getattr(s, 'seriesname', None) is None:
+                logger.log(u"Show in " + self.showDir + " has no name on " + str(sickbeard.indexerApi(self.indexer).name) + ", probably the wrong language used to search with.", logger.ERROR)
+                ui.notifications.error("Unable to add show",
+                                       "Show in " + self.showDir + " has no name on " + str(sickbeard.indexerApi(
+                                           self.indexer).name) + ", probably the wrong language. Delete .nfo and add manually in the correct language.")
                 self._finishEarly()
                 return
+            # if the show has no episodes/seasons
+            if not s:
+                logger.log(u"Show " + str(s['seriesname']) + " is on " + str(sickbeard.indexerApi(self.indexer).name) + " but contains no season/episode data.", logger.ERROR)
+                ui.notifications.error("Unable to add show",
+                                       "Show " + str(s['seriesname']) + " is on " + str(sickbeard.indexerApi(
+                                           self.indexer).name) + " but contains no season/episode data.")
+                self._finishEarly()
+                return
+        except Exception, e:
+            logger.log(u"Unable to find show ID:" + str(self.indexer_id) + " on Indexer: " + str(sickbeard.indexerApi(self.indexer).name), logger.ERROR)
+            ui.notifications.error("Unable to add show",
+                                   "Unable to look up the show in " + self.showDir + " on " + str(sickbeard.indexerApi(
+                                       self.indexer).name) + " using ID " + str(
+                                       self.indexer_id) + ", not using the NFO. Delete .nfo and try adding manually again.")
+            self._finishEarly()
+            return
 
+        try:
             # clear the name cache
             name_cache.clearCache()
 
-            newShow = TVShow(self.tvdb_id, self.lang)
-            newShow.loadFromTVDB()
+            newShow = TVShow(self.indexer, self.indexer_id, self.lang)
+            newShow.loadFromIndexer()
 
             self.show = newShow
 
@@ -276,13 +290,21 @@ class QueueItemAdd(ShowQueueItem):
                 self.show.air_by_date = 1
             if self.show.genre and "documentary" in self.show.genre.lower():
                 self.show.air_by_date = 0
+            if self.show.classification and "sports" in self.show.classification.lower():
+                self.show.sports = 1
 
-        except tvdb_exceptions.tvdb_exception, e:
-            logger.log(u"Unable to add show due to an error with TVDB: " + ex(e), logger.ERROR)
+
+        except sickbeard.indexer_exception, e:
+            logger.log(
+                u"Unable to add show due to an error with " + sickbeard.indexerApi(self.indexer).name + ": " + ex(e),
+                logger.ERROR)
             if self.show:
-                ui.notifications.error("Unable to add " + str(self.show.name) + " due to an error with TVDB")
+                ui.notifications.error(
+                    "Unable to add " + str(self.show.name) + " due to an error with " + sickbeard.indexerApi(
+                        self.indexer).name + "")
             else:
-                ui.notifications.error("Unable to add show due to an error with TVDB")
+                ui.notifications.error(
+                    "Unable to add show due to an error with " + sickbeard.indexerApi(self.indexer).name + "")
             self._finishEarly()
             return
 
@@ -293,7 +315,7 @@ class QueueItemAdd(ShowQueueItem):
             return
 
         except Exception, e:
-            logger.log(u"Error trying to add show: "+ex(e), logger.ERROR)
+            logger.log(u"Error trying to add show: " + ex(e), logger.ERROR)
             logger.log(traceback.format_exc(), logger.DEBUG)
             self._finishEarly()
             raise
@@ -304,11 +326,8 @@ class QueueItemAdd(ShowQueueItem):
         except imdb_exceptions.IMDbError, e:
             #todo Insert UI notification
             logger.log(u" Something wrong on IMDb api: " + ex(e), logger.WARNING)
-        except imdb_exceptions.IMDbParserError, e:
-            logger.log(u" IMDb_api parser error: " + ex(e), logger.WARNING)
         except Exception, e:
             logger.log(u"Error loading IMDb info: " + ex(e), logger.ERROR)
-#            logger.log(traceback.format_exc(), logger.DEBUG)
 
         try:
             self.show.saveToDB()
@@ -317,20 +336,17 @@ class QueueItemAdd(ShowQueueItem):
             logger.log(traceback.format_exc(), logger.DEBUG)
             self._finishEarly()
             raise
-        
+
         # add it to the show list
-        sickbeard.showList.append(self.show)         
+        sickbeard.showList.append(self.show)
 
         try:
-            self.show.loadEpisodesFromTVDB()
+            self.show.loadEpisodesFromIndexer()
         except Exception, e:
-            logger.log(u"Error with TVDB, not creating episode list: " + ex(e), logger.ERROR)
+            logger.log(
+                u"Error with " + sickbeard.indexerApi(self.show.indexer).name + ", not creating episode list: " + ex(e),
+                logger.ERROR)
             logger.log(traceback.format_exc(), logger.DEBUG)
-
-        try:
-            self.show.setTVRID()
-        except Exception, e:
-            logger.log(u"Error with TVRage, not setting tvrid" + ex(e), logger.ERROR)
 
         try:
             self.show.loadEpisodesFromDir()
@@ -342,18 +358,21 @@ class QueueItemAdd(ShowQueueItem):
         if self.default_status != SKIPPED:
             logger.log(u"Setting all episodes to the specified default status: " + str(self.default_status))
             myDB = db.DBConnection()
-            myDB.action("UPDATE tv_episodes SET status = ? WHERE status = ? AND showid = ? AND season != 0", [self.default_status, SKIPPED, self.show.tvdbid])
+            myDB.action("UPDATE tv_episodes SET status = ? WHERE status = ? AND showid = ? AND season != 0",
+                        [self.default_status, SKIPPED, self.show.indexerid])
 
         # if they started with WANTED eps then run the backlog
         if self.default_status == WANTED:
             logger.log(u"Launching backlog for this show since its episodes are WANTED")
-            sickbeard.backlogSearchScheduler.action.searchBacklog([self.show]) #@UndefinedVariable
-	elif self.default_status == SKIPPED:
-	    logger.log(u"Launching downloadable search for this show since its episodes are SKIPPED")
+            sickbeard.backlogSearchScheduler.action.searchBacklog([self.show])  #@UndefinedVariable
+        # if they started with SKIPPED eps then run the downloadable search
+        elif self.default_status == SKIPPED:
+            logger.log(u"Launching downloadable search for this show since its episodes are SKIPPED")
             sickbeard.downloadableSearchScheduler.action.searchDownloadable([self.show]) #@UndefinedVariable
 
         self.show.writeMetadata()
-        self.show.populateCache()    
+        self.show.updateMetadata()
+        self.show.populateCache()
 
         self.show.flushEpisodes()
 
@@ -377,13 +396,13 @@ class QueueItemRefresh(ShowQueueItem):
         self.priority = generic_queue.QueuePriorities.HIGH
 
     def execute(self):
-
         ShowQueueItem.execute(self)
 
         logger.log(u"Performing refresh on " + self.show.name)
 
         self.show.refreshDir()
         self.show.writeMetadata()
+        #self.show.updateMetadata()
         self.show.populateCache()
 
         self.inProgress = False
@@ -429,15 +448,15 @@ class QueueItemRename(ShowQueueItem):
 
         self.inProgress = False
 
+
 class QueueItemSubtitle(ShowQueueItem):
     def __init__(self, show=None):
         ShowQueueItem.__init__(self, ShowQueueActions.SUBTITLE, show)
 
     def execute(self):
-
         ShowQueueItem.execute(self)
 
-        logger.log(u"Downloading subtitles for "+self.show.name)
+        logger.log(u"Downloading subtitles for " + self.show.name)
 
         self.show.downloadSubtitles()
 
@@ -455,14 +474,16 @@ class QueueItemUpdate(ShowQueueItem):
 
         logger.log(u"Beginning update of " + self.show.name)
 
-        logger.log(u"Retrieving show info from TVDB", logger.DEBUG)
+        logger.log(u"Retrieving show info from " + sickbeard.indexerApi(self.show.indexer).name + "", logger.DEBUG)
         try:
-            self.show.loadFromTVDB(cache=not self.force)
-        except tvdb_exceptions.tvdb_error, e:
-            logger.log(u"Unable to contact TVDB, aborting: " + ex(e), logger.WARNING)
+            self.show.loadFromIndexer(cache=not self.force)
+        except sickbeard.indexer_error, e:
+            logger.log(u"Unable to contact " + sickbeard.indexerApi(self.show.indexer).name + ", aborting: " + ex(e),
+                       logger.WARNING)
             return
-        except tvdb_exceptions.tvdb_attributenotfound, e:
-            logger.log(u"Data retrieved from TVDB was incomplete, aborting: " + ex(e), logger.ERROR)
+        except sickbeard.indexer_attributenotfound, e:
+            logger.log(u"Data retrieved from " + sickbeard.indexerApi(
+                self.show.indexer).name + " was incomplete, aborting: " + ex(e), logger.ERROR)
             return
 
         logger.log(u"Retrieving show info from IMDb", logger.DEBUG)
@@ -470,60 +491,56 @@ class QueueItemUpdate(ShowQueueItem):
             self.show.loadIMDbInfo()
         except imdb_exceptions.IMDbError, e:
             logger.log(u" Something wrong on IMDb api: " + ex(e), logger.WARNING)
-        except imdb_exceptions.IMDbParserError, e:
-            logger.log(u" IMDb api parser error: " + ex(e), logger.WARNING)
         except Exception, e:
             logger.log(u"Error loading IMDb info: " + ex(e), logger.ERROR)
             logger.log(traceback.format_exc(), logger.DEBUG)
-        
+
         try:
             self.show.saveToDB()
         except Exception, e:
             logger.log(u"Error saving the episode to the database: " + ex(e), logger.ERROR)
             logger.log(traceback.format_exc(), logger.DEBUG)
-        
+
         # get episode list from DB
         logger.log(u"Loading all episodes from the database", logger.DEBUG)
         DBEpList = self.show.loadEpisodesFromDB()
 
         # get episode list from TVDB
-        logger.log(u"Loading all episodes from theTVDB", logger.DEBUG)
+        logger.log(u"Loading all episodes from " + sickbeard.indexerApi(self.show.indexer).name + "", logger.DEBUG)
         try:
-            TVDBEpList = self.show.loadEpisodesFromTVDB(cache=not self.force)
-        except tvdb_exceptions.tvdb_exception, e:
-            logger.log(u"Unable to get info from TVDB, the show info will not be refreshed: " + ex(e), logger.ERROR)
-            TVDBEpList = None
+            IndexerEpList = self.show.loadEpisodesFromIndexer(cache=not self.force)
+        except sickbeard.indexer_exception, e:
+            logger.log(u"Unable to get info from " + sickbeard.indexerApi(
+                self.show.indexer).name + ", the show info will not be refreshed: " + ex(e), logger.ERROR)
+            IndexerEpList = None
 
-        if TVDBEpList == None:
-            logger.log(u"No data returned from TVDB, unable to update this show", logger.ERROR)
+        if IndexerEpList == None:
+            logger.log(u"No data returned from " + sickbeard.indexerApi(
+                self.show.indexer).name + ", unable to update this show", logger.ERROR)
 
         else:
 
             # for each ep we found on TVDB delete it from the DB list
-            for curSeason in TVDBEpList:
-                for curEpisode in TVDBEpList[curSeason]:
-                    logger.log(u"Removing " + str(curSeason) + "x" + str(curEpisode) + " from the DB list", logger.DEBUG)
+            for curSeason in IndexerEpList:
+                for curEpisode in IndexerEpList[curSeason]:
+                    logger.log(u"Removing " + str(curSeason) + "x" + str(curEpisode) + " from the DB list",
+                               logger.DEBUG)
                     if curSeason in DBEpList and curEpisode in DBEpList[curSeason]:
                         del DBEpList[curSeason][curEpisode]
 
             # for the remaining episodes in the DB list just delete them from the DB
             for curSeason in DBEpList:
                 for curEpisode in DBEpList[curSeason]:
-                    logger.log(u"Permanently deleting episode " + str(curSeason) + "x" + str(curEpisode) + " from the database", logger.MESSAGE)
+                    logger.log(u"Permanently deleting episode " + str(curSeason) + "x" + str(
+                        curEpisode) + " from the database", logger.MESSAGE)
                     curEp = self.show.getEpisode(curSeason, curEpisode)
                     try:
                         curEp.deleteEpisode()
                     except exceptions.EpisodeDeletedException:
                         pass
 
-        # now that we've updated the DB from TVDB see if there's anything we can add from TVRage
-        with self.show.lock:
-            logger.log(u"Attempting to supplement show info with info from TVRage", logger.DEBUG)
-            self.show.loadLatestFromTVRage()
-            if self.show.tvrid == 0:
-                self.show.setTVRID()
+        sickbeard.showQueueScheduler.action.refreshShow(self.show, True)  #@UndefinedVariable
 
-        sickbeard.showQueueScheduler.action.refreshShow(self.show, True) #@UndefinedVariable
 
 class QueueItemForceUpdate(QueueItemUpdate):
     def __init__(self, show=None):

@@ -29,8 +29,10 @@ import sickbeard
 from sickbeard import encodingKludge as ek
 from sickbeard import logger
 from sickbeard.exceptions import ex
+from sickbeard.common import cpu_presets
 
 db_lock = threading.Lock()
+
 
 def dbFilename(filename="sickbeard.db", suffix=None):
     """
@@ -44,6 +46,7 @@ def dbFilename(filename="sickbeard.db", suffix=None):
         filename = "%s.%s" % (filename, suffix)
     return ek.ek(os.path.join, sickbeard.DATA_DIR, filename)
 
+
 class DBConnection:
     def __init__(self, filename="sickbeard.db", suffix=None, row_type=None):
 
@@ -55,6 +58,8 @@ class DBConnection:
             self.connection.row_factory = sqlite3.Row
 
     def checkDBVersion(self):
+        result = None
+
         try:
             result = self.select("SELECT db_version FROM db_version")
         except sqlite3.OperationalError, e:
@@ -66,11 +71,50 @@ class DBConnection:
         else:
             return 0
 
+    def fetch(self, query, args=None):
+
+        with db_lock:
+
+            if query == None:
+                return
+
+            sqlResult = None
+            attempt = 0
+
+            while attempt < 5:
+                try:
+                    if args == None:
+                        logger.log(self.filename + ": " + query, logger.DB)
+                        cursor = self.connection.cursor()
+                        cursor.execute(query)
+                        sqlResult = cursor.fetchone()[0]
+                    else:
+                        logger.log(self.filename + ": " + query + " with args " + str(args), logger.DB)
+                        cursor = self.connection.cursor()
+                        cursor.execute(query, args)
+                        sqlResult = cursor.fetchone()[0]
+
+                    # get out of the connection attempt loop since we were successful
+                    break
+                except sqlite3.OperationalError, e:
+                    if "unable to open database file" in e.args[0] or "database is locked" in e.args[0]:
+                        logger.log(u"DB error: " + ex(e), logger.WARNING)
+                        attempt += 1
+                        time.sleep(cpu_presets[sickbeard.CPU_PRESET])
+                    else:
+                        logger.log(u"DB error: " + ex(e), logger.ERROR)
+                        raise
+                except sqlite3.DatabaseError, e:
+                    logger.log(u"Fatal error executing query: " + ex(e), logger.ERROR)
+                    raise
+
+            return sqlResult
+
     def mass_action(self, querylist, logTransaction=False):
 
         with db_lock:
 
-            if querylist == None or len(querylist) == 0:
+            if querylist == None:
                 return
 
             sqlResult = []
@@ -88,7 +132,7 @@ class DBConnection:
                                 logger.log(qu[0] + " with args " + str(qu[1]), logger.DEBUG)
                             sqlResult.append(self.connection.execute(qu[0], qu[1]))
                     self.connection.commit()
-                    logger.log(u"Transaction with "  + str(len(querylist)) + u" query's executed", logger.DEBUG)
+                    logger.log(u"Transaction with " + str(len(querylist)) + u" queries executed", logger.DEBUG)
                     return sqlResult
                 except sqlite3.OperationalError, e:
                     sqlResult = []
@@ -97,7 +141,7 @@ class DBConnection:
                     if "unable to open database file" in e.args[0] or "database is locked" in e.args[0]:
                         logger.log(u"DB error: " + ex(e), logger.WARNING)
                         attempt += 1
-                        time.sleep(1)
+                        time.sleep(cpu_presets[sickbeard.CPU_PRESET])
                     else:
                         logger.log(u"DB error: " + ex(e), logger.ERROR)
                         raise
@@ -135,7 +179,7 @@ class DBConnection:
                     if "unable to open database file" in e.args[0] or "database is locked" in e.args[0]:
                         logger.log(u"DB error: " + ex(e), logger.WARNING)
                         attempt += 1
-                        time.sleep(1)
+                        time.sleep(cpu_presets[sickbeard.CPU_PRESET])
                     else:
                         logger.log(u"DB error: " + ex(e), logger.ERROR)
                         raise
@@ -159,15 +203,16 @@ class DBConnection:
 
         changesBefore = self.connection.total_changes
 
-        genParams = lambda myDict : [x + " = ?" for x in myDict.keys()]
+        genParams = lambda myDict: [x + " = ?" for x in myDict.keys()]
 
-        query = "UPDATE " + tableName + " SET " + ", ".join(genParams(valueDict)) + " WHERE " + " AND ".join(genParams(keyDict))
+        query = "UPDATE " + tableName + " SET " + ", ".join(genParams(valueDict)) + " WHERE " + " AND ".join(
+            genParams(keyDict))
 
         self.action(query, valueDict.values() + keyDict.values())
 
         if self.connection.total_changes == changesBefore:
             query = "INSERT INTO " + tableName + " (" + ", ".join(valueDict.keys() + keyDict.keys()) + ")" + \
-                     " VALUES (" + ", ".join(["?"] * len(valueDict.keys() + keyDict.keys())) + ")"
+                    " VALUES (" + ", ".join(["?"] * len(valueDict.keys() + keyDict.keys())) + ")"
             self.action(query, valueDict.values() + keyDict.values())
 
     def tableInfo(self, tableName):
@@ -175,7 +220,7 @@ class DBConnection:
         cursor = self.connection.execute("PRAGMA table_info(%s)" % tableName)
         columns = {}
         for column in cursor:
-            columns[column['name']] = { 'type': column['type'] }
+            columns[column['name']] = {'type': column['type']}
         return columns
 
     # http://stackoverflow.com/questions/3300464/how-can-i-get-dict-from-sqlite-query
@@ -185,8 +230,10 @@ class DBConnection:
             d[col[0]] = row[idx]
         return d
 
+
 def sanityCheckDatabase(connection, sanity_check):
     sanity_check(connection).check()
+
 
 class DBSanityCheck(object):
     def __init__(self, connection):
@@ -194,6 +241,7 @@ class DBSanityCheck(object):
 
     def check(self):
         pass
+
 
 # ===============
 # = Upgrade API =
@@ -203,8 +251,10 @@ def upgradeDatabase(connection, schema):
     logger.log(u"Checking database structure...", logger.MESSAGE)
     _processUpgrade(connection, schema)
 
+
 def prettyName(class_name):
     return ' '.join([x.group() for x in re.finditer("([A-Z])([a-z0-9]+)", class_name)])
+
 
 def _processUpgrade(connection, upgradeClass):
     instance = upgradeClass(connection)
@@ -223,8 +273,9 @@ def _processUpgrade(connection, upgradeClass):
     for upgradeSubClass in upgradeClass.__subclasses__():
         _processUpgrade(connection, upgradeSubClass)
 
+
 # Base migration class. All future DB changes should be subclassed from this class
-class SchemaUpgrade (object):
+class SchemaUpgrade(object):
     def __init__(self, connection):
         self.connection = connection
 

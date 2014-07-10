@@ -27,7 +27,7 @@ from sickbeard import db, scheduler
 from sickbeard import search_queue
 from sickbeard import logger
 from sickbeard import ui
-#from sickbeard.common import *
+from sickbeard import common
 
 class DownloadableSearchScheduler(scheduler.Scheduler):
 
@@ -65,7 +65,7 @@ class DownloadableSearcher:
             return None
 
     def am_running(self):
-        logger.log(u"amWaiting: "+str(self.amWaiting)+", amActive: "+str(self.amActive), logger.DEBUG)
+        logger.log(u"amWaiting: " + str(self.amWaiting) + ", amActive: " + str(self.amActive), logger.DEBUG)
         return (not self.amWaiting) and self.amActive
 
     def searchDownloadable(self, which_shows=None):
@@ -75,7 +75,7 @@ class DownloadableSearcher:
         else:
             show_list = sickbeard.showList
 
-        if self.amActive == True:
+        if self.amActive:
             logger.log(u"Downloadable search is still running, not starting it again", logger.DEBUG)
             return
 
@@ -91,41 +91,17 @@ class DownloadableSearcher:
         self.amActive = True
         self.amPaused = False
 
-        #myDB = db.DBConnection()
-        #numSeasonResults = myDB.select("SELECT DISTINCT(season), showid FROM tv_episodes ep, tv_shows show WHERE season != 0 AND ep.showid = show.tvdb_id AND ep.airdate > ?", [fromDate.toordinal()])
-
-        # get separate lists of the season/date shows
-        #season_shows = [x for x in show_list if not x.air_by_date]
-        air_by_date_shows = [x for x in show_list if x.air_by_date]
-
-        # figure out how many segments of air by date shows we're going to do
-        air_by_date_segments = []
-        for cur_id in [x.tvdbid for x in air_by_date_shows]:
-            air_by_date_segments += self._get_air_by_date_segments(cur_id, fromDate) 
-
-        logger.log(u"Air-by-date segments: "+str(air_by_date_segments), logger.DEBUG)
-
-        #totalSeasons = float(len(numSeasonResults) + len(air_by_date_segments))
-        #numSeasonsDone = 0.0
-
         # go through non air-by-date shows and see if they need any episodes
         for curShow in show_list:
 
-            if curShow.air_by_date:
-                segments = [x[1] for x in self._get_air_by_date_segments(curShow.tvdbid, fromDate)]
+            segments = self._get_segments(curShow, fromDate)
+
+            if len(segments):
+                download_search_queue_item = search_queue.DownloadSearchQueueItem(curShow, segments)
+                sickbeard.searchQueueScheduler.action.add_item(download_search_queue_item)  #@UndefinedVariable 
             else:
-                segments = self._get_season_segments(curShow.tvdbid, fromDate)
-
-            for cur_segment in segments:
-
-                self.currentSearchInfo = {'title': curShow.name + " Season "+str(cur_segment)}
-
-                download_search_queue_item = search_queue.DownloadSearchQueueItem(curShow, cur_segment)
-
-                if not download_search_queue_item.availableSeason:
-                    logger.log(u"Nothing in season "+str(cur_segment)+" needs to be check if available, skipping this season", logger.DEBUG)
-                else:
-                   sickbeard.searchQueueScheduler.action.add_item(download_search_queue_item)  #@UndefinedVariable 
+                logger.log(u"Nothing is available for " + str(curShow.name) + ", skipping this season",
+                           logger.DEBUG)
 
         # don't consider this an actual downloadable search if we only did recent eps
         # or if we only did certain shows
@@ -148,33 +124,49 @@ class DownloadableSearcher:
             last_DownloadableSearch = 1
         else:
             last_DownloadableSearch = int(sqlResults[0]["last_DownloadableSearch"])
+            if last_DownloadableSearch > datetime.date.today().toordinal():
+                last_DownloadableSearch = 1
 
         self._last_DownloadableSearch = last_DownloadableSearch
         return self._last_DownloadableSearch
 
-    def _get_season_segments(self, tvdb_id, fromDate):
-        myDB = db.DBConnection()
-        sqlResults = myDB.select("SELECT DISTINCT(season) as season FROM tv_episodes WHERE showid = ? AND season > 0 and airdate > ?", [tvdb_id, fromDate.toordinal()])
-        return [int(x["season"]) for x in sqlResults]
+    def _get_segments(self, show, fromDate):
+        anyQualities, bestQualities = common.Quality.splitQuality(show.quality)  #@UnusedVariable
 
-    def _get_air_by_date_segments(self, tvdb_id, fromDate):
-        # query the DB for all dates for this show
-        myDB = db.DBConnection()
-        num_air_by_date_results = myDB.select("SELECT airdate, showid FROM tv_episodes ep, tv_shows show WHERE season != 0 AND ep.showid = show.tvdb_id AND show.paused = 0 ANd ep.airdate > ? AND ep.showid = ?",
-                                 [fromDate.toordinal(), tvdb_id])
+        logger.log(u"Seeing if we need anything from " + show.name)
 
-        # break them apart into month/year strings
-        air_by_date_segments = []
-        for cur_result in num_air_by_date_results:
-            cur_date = datetime.date.fromordinal(int(cur_result["airdate"]))
-            cur_date_str = str(cur_date)[:7]
-            cur_tvdb_id = int(cur_result["showid"])
-            
-            cur_result_tuple = (cur_tvdb_id, cur_date_str)
-            if cur_result_tuple not in air_by_date_segments:
-                air_by_date_segments.append(cur_result_tuple)
-        
-        return air_by_date_segments
+        myDB = db.DBConnection()
+        if show.air_by_date:
+            sqlResults = myDB.select(
+                "SELECT ep.status, ep.season, ep.episode FROM tv_episodes ep, tv_shows show WHERE season != 0 AND ep.showid = show.indexer_id AND ep.airdate > ? AND ep.showid = ? AND show.air_by_date = 1",
+                [fromDate.toordinal(), show.indexerid])
+        else:
+            sqlResults = myDB.select(
+                "SELECT status, season, episode FROM tv_episodes WHERE showid = ? AND season > 0 and airdate > ?",
+                [show.indexerid, fromDate.toordinal()])
+
+        # check through the list of statuses to see if we want any
+        downloadable = {}
+        for result in sqlResults:
+            curCompositeStatus = int(result["status"])
+            curStatus, curQuality = common.Quality.splitCompositeStatus(curCompositeStatus)
+
+            if bestQualities:
+                highestBestQuality = max(bestQualities)
+            else:
+                highestBestQuality = 0
+
+            # if we need a better one then say yes
+            if curStatus == common.SKIPPED:
+
+                epObj = show.getEpisode(int(result["season"]), int(result["episode"]))
+
+                if epObj.season in downloadable:
+                    downloadable[epObj.season].append(epObj)
+                else:
+                    downloadable[epObj.season] = [epObj]
+
+        return downloadable
 
     def _set_last_DownloadableSearch(self, when):
 
@@ -184,12 +176,12 @@ class DownloadableSearcher:
         sqlResults = myDB.select("SELECT * FROM info")
 
         if len(sqlResults) == 0:
-            myDB.action("INSERT INTO info (last_downloadablesearch, last_backlog, last_TVDB) VALUES (?,?,?)", [str(when), 0, 0])
+            myDB.action("INSERT INTO info (last_downloadablesearch, last_backlog, last_indexer) VALUES (?,?,?)", [str(when), 0, 0])
         else:
             myDB.action("UPDATE info SET last_downloadablesearch=" + str(when))
 
 
-    def run(self):
+    def run(self, force=False):
         try:
             self.searchDownloadable()
         except:

@@ -19,19 +19,29 @@
 import datetime
 import os.path
 import re
-
+import threading
 import regexes
-
+import time
 import sickbeard
 
-from sickbeard import logger
+from sickbeard import logger, helpers, scene_numbering
+from sickbeard.common import cpu_presets
+from dateutil import parser
+
+nameparser_lock = threading.Lock()
+
 
 class NameParser(object):
-    def __init__(self, file_name=True):
+    ALL_REGEX = 0
+    NORMAL_REGEX = 1
+    SPORTS_REGEX = 2
+
+    def __init__(self, file_name=True, regexMode=0):
 
         self.file_name = file_name
+        self.regexMode = regexMode
         self.compiled_regexes = []
-        self._compile_regexes()
+        self._compile_regexes(self.regexMode)
 
     def clean_series_name(self, series_name):
         """Cleans up series name by removing any . and _
@@ -47,18 +57,34 @@ class NameParser(object):
         
         Stolen from dbr's tvnamer
         """
-        
+
         series_name = re.sub("(\D)\.(?!\s)(\D)", "\\1 \\2", series_name)
-        series_name = re.sub("(\d)\.(\d{4})", "\\1 \\2", series_name) # if it ends in a year then don't keep the dot
+        series_name = re.sub("(\d)\.(\d{4})", "\\1 \\2", series_name)  # if it ends in a year then don't keep the dot
         series_name = re.sub("(\D)\.(?!\s)", "\\1 ", series_name)
         series_name = re.sub("\.(?!\s)(\D)", " \\1", series_name)
         series_name = series_name.replace("_", " ")
         series_name = re.sub("-$", "", series_name)
-        series_name = re.sub("^\[.*\]", "",  series_name)
+        series_name = re.sub("^\[.*\]", "", series_name)
         return series_name.strip()
 
-    def _compile_regexes(self):
-        for (cur_pattern_name, cur_pattern) in regexes.ep_regexes:
+    def _compile_regexes(self, regexMode):
+        if regexMode <= self.ALL_REGEX:
+            logger.log(u"Using ALL regexs", logger.DEBUG)
+            uncompiled_regex = regexes.sports_regexs + regexes.ep_regexes
+
+        elif regexMode == self.NORMAL_REGEX:
+            logger.log(u"Using NORMAL regexs", logger.DEBUG)
+            uncompiled_regex = regexes.ep_regexes
+
+        elif regexMode == self.SPORTS_REGEX:
+            logger.log(u"Using SPORTS regexs", logger.DEBUG)
+            uncompiled_regex = regexes.sports_regexs
+
+        else:
+            logger.log(u"This is a programing ERROR. Fallback Using NORMAL regexs", logger.ERROR)
+            uncompiled_regex = regexes.ep_regexes
+
+        for (cur_pattern_name, cur_pattern) in uncompiled_regex:
             try:
                 cur_regex = re.compile(cur_pattern, re.VERBOSE | re.IGNORECASE)
             except re.error, errormsg:
@@ -67,68 +93,82 @@ class NameParser(object):
                 self.compiled_regexes.append((cur_pattern_name, cur_regex))
 
     def _parse_string(self, name):
-        
+
         if not name:
             return None
-        
+
         for (cur_regex_name, cur_regex) in self.compiled_regexes:
+
             match = cur_regex.match(name)
 
             if not match:
                 continue
-            
+
             result = ParseResult(name)
             result.which_regex = [cur_regex_name]
-            
+
             named_groups = match.groupdict().keys()
 
             if 'series_name' in named_groups:
                 result.series_name = match.group('series_name')
                 if result.series_name:
                     result.series_name = self.clean_series_name(result.series_name)
-            
+
             if 'season_num' in named_groups:
                 tmp_season = int(match.group('season_num'))
-                if cur_regex_name == 'bare' and tmp_season in (19,20):
+                if cur_regex_name == 'bare' and tmp_season in (19, 20):
                     continue
                 result.season_number = tmp_season
-            
+
             if 'ep_num' in named_groups:
                 ep_num = self._convert_number(match.group('ep_num'))
                 if 'extra_ep_num' in named_groups and match.group('extra_ep_num'):
-                    result.episode_numbers = range(ep_num, self._convert_number(match.group('extra_ep_num'))+1)
+                    result.episode_numbers = range(ep_num, self._convert_number(match.group('extra_ep_num')) + 1)
                 else:
                     result.episode_numbers = [ep_num]
+
+            if 'sports_event_id' in named_groups:
+                sports_event_id = match.group('sports_event_id')
+                if sports_event_id:
+                    result.sports_event_id = int(match.group('sports_event_id'))
+
+            if 'sports_event_name' in named_groups:
+                result.sports_event_name = match.group('sports_event_name')
+                if result.sports_event_name:
+                    result.sports_event_name = self.clean_series_name(result.sports_event_name)
+
+            if 'sports_event_date' in named_groups:
+                sports_event_date = match.group('sports_event_date')
+                if sports_event_date:
+                    try:
+                        result.sports_event_date = parser.parse(sports_event_date, fuzzy=True).date()
+                    except:
+                        continue
 
             if 'air_year' in named_groups and 'air_month' in named_groups and 'air_day' in named_groups:
                 year = int(match.group('air_year'))
                 month = int(match.group('air_month'))
                 day = int(match.group('air_day'))
-                
-                # make an attempt to detect YYYY-DD-MM formats
-                if month > 12:
-                    tmp_month = month
-                    month = day
-                    day = tmp_month
 
                 try:
-                    result.air_date = datetime.date(year, month, day)
-                except ValueError, e:
-                    raise InvalidNameException(e.message)
+                    dtStr = '%s-%s-%s' % (year, month, day)
+                    result.air_date = datetime.datetime.strptime(dtStr, "%Y-%m-%d").date()
+                except:
+                    continue
 
             if 'extra_info' in named_groups:
                 tmp_extra_info = match.group('extra_info')
-                
-                # Show.S04.Special is almost certainly not every episode in the season
-                if tmp_extra_info and cur_regex_name == 'season_only' and re.match(r'([. _-]|^)(special|extra)\w*([. _-]|$)', tmp_extra_info, re.I):
+
+                # Show.S04.Special or Show.S05.Part.2.Extras is almost certainly not every episode in the season
+                if tmp_extra_info and cur_regex_name == 'season_only' and re.search(r'([. _-]|^)(special|extra)s?\w*([. _-]|$)', tmp_extra_info, re.I):
                     continue
                 result.extra_info = tmp_extra_info
-            
+
             if 'release_group' in named_groups:
                 result.release_group = match.group('release_group')
 
             return result
-        
+
         return None
 
     def _combine_results(self, first, second, attr):
@@ -142,10 +182,10 @@ class NameParser(object):
         # if the second doesn't exist then return the first
         if not second:
             return getattr(first, attr)
-        
+
         a = getattr(first, attr)
         b = getattr(second, attr)
-        
+
         # if a is good use it
         if a != None or (type(a) == list and len(a)):
             return a
@@ -153,14 +193,14 @@ class NameParser(object):
         else:
             return b
 
-    def _unicodify(self, obj, encoding = "utf-8"):
+    def _unicodify(self, obj, encoding="utf-8"):
         if isinstance(obj, basestring):
             if not isinstance(obj, unicode):
                 obj = unicode(obj, encoding)
         return obj
 
     def _convert_number(self, number):
-        
+
         try:
             return int(number)
         except:
@@ -168,21 +208,20 @@ class NameParser(object):
                 (1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1),
                 ('M', 'CM', 'D', 'CD', 'C', 'XC', 'L', 'XL', 'X', 'IX', 'V', 'IV', 'I')
             )
-                
-            n = unicode(number).upper()    
-            
+
+            n = unicode(number).upper()
+
             i = result = 0
             for integer, numeral in numeral_map:
                 while n[i:i + len(numeral)] == numeral:
                     result += integer
                     i += len(numeral)
-            
+
             return result
 
     def parse(self, name):
-        
         name = self._unicodify(name)
-        
+
         cached = name_parser_cache.get(name)
         if cached:
             return cached
@@ -194,28 +233,34 @@ class NameParser(object):
             base_file_name = ext_match.group(1)
         else:
             base_file_name = file_name
-        
+
         # use only the direct parent dir
         dir_name = os.path.basename(dir_name)
-        
+
         # set up a result to use
         final_result = ParseResult(name)
-        
+
         # try parsing the file name
         file_name_result = self._parse_string(base_file_name)
-        
+
         # parse the dirname for extra info if needed
         dir_name_result = self._parse_string(dir_name)
 
         # build the ParseResult object
         final_result.air_date = self._combine_results(file_name_result, dir_name_result, 'air_date')
 
+        # sports event title
+        final_result.sports_event_id = self._combine_results(file_name_result, dir_name_result, 'sports_event_id')
+        final_result.sports_event_name = self._combine_results(file_name_result, dir_name_result, 'sports_event_name')
+        final_result.sports_event_date = self._combine_results(file_name_result, dir_name_result, 'sports_event_date')
+
         if not final_result.air_date:
             final_result.season_number = self._combine_results(file_name_result, dir_name_result, 'season_number')
             final_result.episode_numbers = self._combine_results(file_name_result, dir_name_result, 'episode_numbers')
-        
+
         # if the dirname has a release group/show name I believe it over the filename
         final_result.series_name = self._combine_results(dir_name_result, file_name_result, 'series_name')
+
         final_result.extra_info = self._combine_results(dir_name_result, file_name_result, 'extra_info')
         final_result.release_group = self._combine_results(dir_name_result, file_name_result, 'release_group')
 
@@ -235,22 +280,25 @@ class NameParser(object):
             raise InvalidNameException("Unable to parse " + name.encode(sickbeard.SYS_ENCODING, 'xmlcharrefreplace'))
 
         name_parser_cache.add(name, final_result)
-        # return it
         return final_result
+
 
 class ParseResult(object):
     def __init__(self,
                  original_name,
                  series_name=None,
+                 sports_event_id=None,
+                 sports_event_name=None,
+                 sports_event_date=None,
                  season_number=None,
                  episode_numbers=None,
                  extra_info=None,
                  release_group=None,
-                 air_date=None
-                 ):
+                 air_date=None,
+    ):
 
         self.original_name = original_name
-        
+
         self.series_name = series_name
         self.season_number = season_number
         if not episode_numbers:
@@ -260,15 +308,19 @@ class ParseResult(object):
 
         self.extra_info = extra_info
         self.release_group = release_group
-        
+
         self.air_date = air_date
-        
+
+        self.sports_event_id = sports_event_id
+        self.sports_event_name = sports_event_name
+        self.sports_event_date = sports_event_date
+
         self.which_regex = None
-        
+
     def __eq__(self, other):
         if not other:
             return False
-        
+
         if self.series_name != other.series_name:
             return False
         if self.season_number != other.season_number:
@@ -281,7 +333,13 @@ class ParseResult(object):
             return False
         if self.air_date != other.air_date:
             return False
-        
+        if self.sports_event_id != other.sports_event_id:
+            return False
+        if self.sports_event_name != other.sports_event_name:
+            return False
+        if self.sports_event_date != other.sports_event_date:
+            return False
+
         return True
 
     def __str__(self):
@@ -290,50 +348,97 @@ class ParseResult(object):
         else:
             to_return = u''
         if self.season_number != None:
-            to_return += 'S'+str(self.season_number)
+            to_return += 'S' + str(self.season_number)
         if self.episode_numbers and len(self.episode_numbers):
             for e in self.episode_numbers:
-                to_return += 'E'+str(e)
+                to_return += 'E' + str(e)
 
         if self.air_by_date:
             to_return += str(self.air_date)
+        if self.sports:
+            to_return += str(self.sports_event_name)
+            to_return += str(self.sports_event_id)
+            to_return += str(self.sports_event_date)
 
         if self.extra_info:
             to_return += ' - ' + self.extra_info
         if self.release_group:
             to_return += ' (' + self.release_group + ')'
 
-        to_return += ' [ABD: '+str(self.air_by_date)+']'
+        to_return += ' [ABD: ' + str(self.air_by_date) + ']'
+        to_return += ' [SPORTS: ' + str(self.sports) + ']'
+        to_return += ' [whichReg: ' + str(self.which_regex) + ']'
 
         return to_return.encode('utf-8')
+
+    def convert(self, show):
+        if not show: return self # need show object
+        if not self.season_number: return self  # can't work without a season
+        if not len(self.episode_numbers): return self  # need at least one episode
+        if self.air_by_date or self.sports: return self  # scene numbering does not apply to air-by-date
+
+        new_episode_numbers = []
+        new_season_numbers = []
+        for epNo in self.episode_numbers:
+            (s, e) = scene_numbering.get_indexer_numbering(show.indexerid, show.indexer, self.season_number,
+                                                           epNo)
+            new_episode_numbers.append(e)
+            new_season_numbers.append(s)
+
+        # need to do a quick sanity check here.  It's possible that we now have episodes
+        # from more than one season (by tvdb numbering), and this is just too much
+        # for sickbeard, so we'd need to flag it.
+        new_season_numbers = list(set(new_season_numbers))  # remove duplicates
+        if len(new_season_numbers) > 1:
+            raise InvalidNameException("Scene numbering results episodes from "
+                                       "seasons %s, (i.e. more than one) and "
+                                       "sickbeard does not support this.  "
+                                       "Sorry." % (str(new_season_numbers)))
+
+        # I guess it's possible that we'd have duplicate episodes too, so lets
+        # eliminate them
+        new_episode_numbers = list(set(new_episode_numbers))
+        new_episode_numbers.sort()
+
+        self.episode_numbers = new_episode_numbers
+        self.season_number = new_season_numbers[0]
+
+        return self
 
     def _is_air_by_date(self):
         if self.season_number == None and len(self.episode_numbers) == 0 and self.air_date:
             return True
         return False
+
     air_by_date = property(_is_air_by_date)
 
+    def _is_sports(self):
+        if self.sports_event_date:
+            return True
+        return False
+
+    sports = property(_is_sports)
+
+
 class NameParserCache(object):
-    #TODO: check if the fifo list can beskiped and only use one dict
-    _previous_parsed_list = [] # keep a fifo list of the cached items
     _previous_parsed = {}
     _cache_size = 100
-    
+
     def add(self, name, parse_result):
         self._previous_parsed[name] = parse_result
-        self._previous_parsed_list.append(name)
-        while len(self._previous_parsed_list) > self._cache_size:
-            del_me = self._previous_parsed_list.pop(0)
-            self._previous_parsed.pop(del_me)
-    
+        _current_cache_size = len(self._previous_parsed)
+        if _current_cache_size > self._cache_size:
+            for i in range(_current_cache_size - self._cache_size):
+                del self._previous_parsed[self._previous_parsed.keys()[0]]
+
     def get(self, name):
         if name in self._previous_parsed:
             logger.log("Using cached parse result for: " + name, logger.DEBUG)
             return self._previous_parsed[name]
-        else:
-            return None
+
 
 name_parser_cache = NameParserCache()
+
 
 class InvalidNameException(Exception):
     "The given name is not valid"

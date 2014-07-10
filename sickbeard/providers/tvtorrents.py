@@ -31,70 +31,72 @@ from sickbeard import tvcache
 
 
 class TvTorrentsProvider(generic.TorrentProvider):
-
     def __init__(self):
 
         generic.TorrentProvider.__init__(self, "TvTorrents")
 
         self.supportsBacklog = False
 
+        self.enabled = False
+        self.hash = None
+        self.digest = None
+        self.ratio = None
+        self.options = None
+
         self.cache = TvTorrentsCache(self)
 
         self.url = 'http://www.tvtorrents.com/'
 
     def isEnabled(self):
-        return sickbeard.TVTORRENTS
+        return self.enabled
 
     def imageName(self):
         return 'tvtorrents.png'
 
     def _checkAuth(self):
 
-        if not sickbeard.TVTORRENTS_DIGEST or not sickbeard.TVTORRENTS_HASH:
+        if not self.digest or not self.hash:
             raise AuthException("Your authentication credentials for " + self.name + " are missing, check your config.")
 
         return True
 
-    def _checkAuthFromData(self, parsedXML):
+    def _checkAuthFromData(self, data):
 
-        if parsedXML is None:
+        if data is None or data.feed is None:
             return self._checkAuth()
 
-        description_text = helpers.get_xml_text(parsedXML.find('.//channel/description'))
+        description_text = data.feed.title
 
         if "User can't be found" in description_text or "Invalid Hash" in description_text:
-            logger.log(u"Incorrect authentication credentials for " + self.name + " : " + str(description_text), logger.DEBUG)
-            raise AuthException(u"Your authentication credentials for " + self.name + " are incorrect, check your config")
+            logger.log(u"Incorrect authentication credentials for " + self.name + " : " + str(description_text),
+                       logger.DEBUG)
+            raise AuthException(
+                u"Your authentication credentials for " + self.name + " are incorrect, check your config")
 
         return True
 
+    def seedRatio(self):
+        return self.ratio
+
 
 class TvTorrentsCache(tvcache.TVCache):
-
     def __init__(self, provider):
-
         tvcache.TVCache.__init__(self, provider)
 
         # only poll TvTorrents every 15 minutes max
         self.minTime = 15
 
     def _getRSSData(self):
-
         # These will be ignored on the serverside.
         ignore_regex = "all.month|month.of|season[\s\d]*complete"
 
-        rss_url = self.provider.url + 'RssServlet?digest=' + sickbeard.TVTORRENTS_DIGEST + '&hash=' + sickbeard.TVTORRENTS_HASH + '&fname=true&exclude=(' + ignore_regex + ')'
+        rss_url = self.provider.url + 'RssServlet?digest=' + provider.digest + '&hash=' + provider.hash + '&fname=true&exclude=(' + ignore_regex + ')'
         logger.log(self.provider.name + u" cache update URL: " + rss_url, logger.DEBUG)
 
-        data = self.provider.getURL(rss_url)
+        return self.getRSSFeed(rss_url)
 
-        if not data:
-            logger.log(u"No data returned from " + rss_url, logger.ERROR)
-            return None
+    def _checkAuth(self, data):
+        return self.provider._checkAuthFromData(data)
 
-        return data
-
-    def _checkAuth(self, parsedXML):
-            return self.provider._checkAuthFromData(parsedXML)
 
 provider = TvTorrentsProvider()
