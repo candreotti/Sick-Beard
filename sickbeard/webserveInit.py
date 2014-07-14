@@ -16,182 +16,136 @@
 # You should have received a copy of the GNU General Public License
 # along with Sick Beard.  If not, see <http://www.gnu.org/licenses/>.
 
-#import cherrypy
-import cherrypy.lib.auth_basic
-import os.path
-
+import os
+import socket
+import time
+import threading
+import sys
 import sickbeard
+import webserve
+import webapi
 
 from sickbeard import logger
-from sickbeard.webserve import WebInterface
-
 from sickbeard.helpers import create_https_certificates
+from tornado.web import Application, StaticFileHandler, RedirectHandler, HTTPError
+from tornado.httpserver import HTTPServer
+from tornado.ioloop import IOLoop
 
+class MultiStaticFileHandler(StaticFileHandler):
+    def initialize(self, paths, default_filename=None):
+        self.paths = paths
+        self.default_filename = default_filename
 
-def initWebServer(options={}):
-    options.setdefault('port', 8081)
-    options.setdefault('host', '0.0.0.0')
-    options.setdefault('log_dir', None)
-    options.setdefault('username', '')
-    options.setdefault('password', '')
-    options.setdefault('web_root', '/')
-    assert isinstance(options['port'], int)
-    assert 'data_root' in options
+    def get(self, path, include_body=True):
+        for p in self.paths:
+            try:
+                # Initialize the Static file with a path
+                super(MultiStaticFileHandler, self).initialize(p)
+                # Try to get the file
+                return super(MultiStaticFileHandler, self).get(path)
+            except HTTPError as exc:
+                # File not found, carry on
+                if exc.status_code == 404:
+                    continue
+                raise
 
-    def http_error_401_hander(status, message, traceback, version):
-        """ Custom handler for 401 error """
-        if status != "401 Unauthorized":
-            logger.log(u"CherryPy caught an error: %s %s" % (status, message), logger.ERROR)
-            logger.log(traceback, logger.DEBUG)
-        return r'''<!DOCTYPE html>
-<html>
-    <head>
-        <title>%s</title>
-    </head>
-    <body>
-        <br/>
-        <font color="#0000FF">Error %s: You need to provide a valid username and password.</font>
-    </body>
-</html>
-''' % ('Access denied', status)
+        # Oops file not found anywhere!
+        raise HTTPError(404)
 
-    def http_error_404_hander(status, message, traceback, version):
-        """ Custom handler for 404 error, redirect back to main page """
-        return r'''<!DOCTYPE html>
-<html>
-    <head>
-        <title>404</title>
-        <script type="text/javascript" charset="utf-8">
-          <!--
-          location.href = "%s/home/"
-          //-->
-        </script>
-    </head>
-    <body>
-        <br/>
-    </body>
-</html>
-''' % options['web_root']
+class SRWebServer(threading.Thread):
+    def __init__(self, options={}, io_loop=None):
+        threading.Thread.__init__(self)
+        self.daemon = True
+        self.alive = True
+        self.name = "TORNADO"
+        self.io_loop = io_loop or IOLoop.current()
 
-    # cherrypy setup
-    enable_https = options['enable_https']
-    https_cert = options['https_cert']
-    https_key = options['https_key']
+        self.options = options
+        self.options.setdefault('port', 8081)
+        self.options.setdefault('host', '0.0.0.0')
+        self.options.setdefault('log_dir', None)
+        self.options.setdefault('username', '')
+        self.options.setdefault('password', '')
+        self.options.setdefault('web_root', '/')
+        assert isinstance(self.options['port'], int)
+        assert 'data_root' in self.options
 
-    if enable_https:
-        # If either the HTTPS certificate or key do not exist, make some self-signed ones.
-        if not (https_cert and os.path.exists(https_cert)) or not (https_key and os.path.exists(https_key)):
-            if not create_https_certificates(https_cert, https_key):
-                logger.log(u"Unable to create CERT/KEY files, disabling HTTPS")
+        # tornado setup
+        self.enable_https = self.options['enable_https']
+        self.https_cert = self.options['https_cert']
+        self.https_key = self.options['https_key']
+
+        if self.enable_https:
+            # If either the HTTPS certificate or key do not exist, make some self-signed ones.
+            if not (self.https_cert and os.path.exists(self.https_cert)) or not (self.https_key and os.path.exists(self.https_key)):
+                if not create_https_certificates(self.https_cert, self.https_key):
+                    logger.log(u"Unable to create CERT/KEY files, disabling HTTPS")
+                    sickbeard.ENABLE_HTTPS = False
+                    self.enable_https = False
+
+            if not (os.path.exists(self.https_cert) and os.path.exists(self.https_key)):
+                logger.log(u"Disabled HTTPS because of missing CERT and KEY files", logger.WARNING)
                 sickbeard.ENABLE_HTTPS = False
-                enable_https = False
+                self.enable_https = False
 
-        if not (os.path.exists(https_cert) and os.path.exists(https_key)):
-            logger.log(u"Disabled HTTPS because of missing CERT and KEY files", logger.WARNING)
-            sickbeard.ENABLE_HTTPS = False
-            enable_https = False
+        # Load the app
+        self.app = Application([],
+                            debug=True,
+                            autoreload=False,
+                            gzip=True,
+                            xheaders=sickbeard.HANDLE_REVERSE_PROXY,
+                            cookie_secret='61oETzKXQAGaYdkL5gEmGeJJFuYh7EQnp2XdTP1o/Vo='
+        )
 
-    mime_gzip = ('text/html',
-                 'text/plain',
-                 'text/css',
-                 'text/javascript',
-                 'application/javascript',
-                 'text/x-javascript',
-                 'application/x-javascript',
-                 'text/x-json',
-                 'application/json'
-    )
+        # Main Handler
+        self.app.add_handlers(".*$", [
+            (r'%s/api/(.*)(/?)' % self.options['web_root'], webapi.Api),
+            (r'%s/(.*)(/?)' % self.options['web_root'], webserve.MainHandler),
+            (r'(.*)', webserve.MainHandler)
+        ])
 
-    options_dict = {
-        'server.socket_port': options['port'],
-        'server.socket_host': options['host'],
-        'log.screen': False,
-        'engine.autoreload.on': False,
-        'engine.autoreload.frequency': 100,
-        'engine.reexec_retry': 100,
-        'tools.gzip.on': True,
-        'tools.gzip.mime_types': mime_gzip,
-        'error_page.401': http_error_401_hander,
-        'error_page.404': http_error_404_hander,
-    }
+        # Static Path Handler
+        self.app.add_handlers(".*$", [
+            (r'/(favicon\.ico)', MultiStaticFileHandler,
+             {'paths': [os.path.join(self.options['data_root'], 'images/ico/favicon.ico')]}),
+            (r'%s/%s/(.*)(/?)' % (self.options['web_root'], 'images'), MultiStaticFileHandler,
+             {'paths': [os.path.join(self.options['data_root'], 'images'),
+                        os.path.join(sickbeard.CACHE_DIR, 'images')]}),
+            (r'%s/%s/(.*)(/?)' % (self.options['web_root'], 'css'), MultiStaticFileHandler,
+             {'paths': [os.path.join(self.options['data_root'], 'css')]}),
+            (r'%s/%s/(.*)(/?)' % (self.options['web_root'], 'js'), MultiStaticFileHandler,
+             {'paths': [os.path.join(self.options['data_root'], 'js')]})
 
-    if enable_https:
-        options_dict['server.ssl_certificate'] = https_cert
-        options_dict['server.ssl_private_key'] = https_key
-        protocol = "https"
-    else:
-        protocol = "http"
+        ])
 
-    logger.log(u"Starting Sick Beard on " + protocol + "://" + str(options['host']) + ":" + str(options['port']) + "/")
-    cherrypy.config.update(options_dict)
-
-    # setup cherrypy logging
-    if options['log_dir'] and os.path.isdir(options['log_dir']):
-        cherrypy.config.update({'log.access_file': os.path.join(options['log_dir'], "cherrypy.log")})
-        logger.log('Using %s for cherrypy log' % cherrypy.config['log.access_file'])
-
-    conf = {
-        '/': {
-            'tools.staticdir.root': options['data_root'],
-            'tools.encode.on': True,
-            'tools.encode.encoding': 'utf-8',
-            'tools.handle_reverse_proxy.on': True,
-        },
-        '/images': {
-            'tools.staticdir.on': True,
-            'tools.staticdir.dir': 'images'
-        },
-        '/js': {
-            'tools.staticdir.on': True,
-            'tools.staticdir.dir': 'js'
-        },
-        '/css': {
-            'tools.staticdir.on': True,
-            'tools.staticdir.dir': 'css'
-        },
-    }
-    app = cherrypy.tree.mount(WebInterface(), options['web_root'], conf)
-
-    # auth
-    if options['username'] != "" and options['password'] != "":
-        if sickbeard.CALENDAR_UNPROTECTED:
-            checkpassword = cherrypy.lib.auth_basic.checkpassword_dict({options['username']: options['password']})
-            app.merge({
-                '/': {
-                    'tools.auth_basic.on': True,
-                    'tools.auth_basic.realm': 'SickBeard',
-                    'tools.auth_basic.checkpassword': checkpassword
-                },
-                '/api': {
-                    'tools.auth_basic.on': False
-                },
-                '/calendar': {
-                    'tools.auth_basic.on': False
-                },
-                '/api/builder': {
-                    'tools.auth_basic.on': True,
-                    'tools.auth_basic.realm': 'SickBeard',
-                    'tools.auth_basic.checkpassword': checkpassword
-                }
-            })
+    def run(self):
+        if self.enable_https:
+            protocol = "https"
+            self.server = HTTPServer(self.app, no_keep_alive=True,
+                                ssl_options={"certfile": self.https_cert, "keyfile": self.https_key})
         else:
-            checkpassword = cherrypy.lib.auth_basic.checkpassword_dict({options['username']: options['password']})
-            app.merge({
-                '/': {
-                    'tools.auth_basic.on': True,
-                    'tools.auth_basic.realm': 'SickBeard',
-                    'tools.auth_basic.checkpassword': checkpassword
-                },
-                '/api': {
-                    'tools.auth_basic.on': False
-                },
-                '/api/builder': {
-                    'tools.auth_basic.on': True,
-                    'tools.auth_basic.realm': 'SickBeard',
-                    'tools.auth_basic.checkpassword': checkpassword
-                }
-            })
+            protocol = "http"
+            self.server = HTTPServer(self.app, no_keep_alive=True)
 
-    cherrypy.server.start()
-    cherrypy.server.wait()
+        logger.log(u"Starting SickRage on " + protocol + "://" + str(self.options['host']) + ":" + str(
+            self.options['port']) + "/")
 
+        try:
+            self.server.listen(self.options['port'], self.options['host'])
+        except:
+            etype, evalue, etb = sys.exc_info()
+            logger.log("Could not start webserver on %s. Excpeption: %s, Error: %s" % (self.options['port'], etype, evalue), logger.ERROR)
+            return
+
+        try:
+            self.io_loop.start()
+            self.io_loop.close(True)
+        except ValueError:
+            # Ignore errors like "ValueError: I/O operation on closed kqueue fd". These might be thrown during a reload.
+            pass
+
+    def shutDown(self):
+        self.alive = False
+        if self.server:
+            self.server.stop()
+            self.io_loop.stop()

@@ -40,18 +40,23 @@ class BacklogSearchScheduler(scheduler.Scheduler):
         else:
             return datetime.date.fromordinal(self.action._lastBacklog + self.action.cycleTime)
 
+    def __del__(self):
+        pass
 
 class BacklogSearcher:
     def __init__(self):
 
         self._lastBacklog = self._get_lastBacklog()
-        self.cycleTime = 7
+        self.cycleTime = sickbeard.BACKLOG_FREQUENCY/60/24
         self.lock = threading.Lock()
         self.amActive = False
         self.amPaused = False
         self.amWaiting = False
 
         self._resetPI()
+
+    def __del__(self):
+        pass
 
     def _resetPI(self):
         self.percentDone = 0
@@ -179,7 +184,7 @@ class BacklogSearcher:
         sqlResults = myDB.select("SELECT * FROM info")
 
         if len(sqlResults) == 0:
-            myDB.action("INSERT INTO info (last_downloadablesearch, last_backlog, last_indexer) VALUES (?,?)", [0, str(when), 0])
+            myDB.action("INSERT INTO info (last_downloadablesearch, last_backlog, last_indexer, last_proper_search) VALUES (?,?,?,?)", [0, str(when), 0, 0])
         else:
             myDB.action("UPDATE info SET last_backlog=" + str(when))
 

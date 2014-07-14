@@ -27,29 +27,24 @@ from sickbeard import ui
 from sickbeard.exceptions import ex
 from sickbeard import encodingKludge as ek
 from sickbeard import db
-
+from sickbeard import network_timezones
+from sickbeard import failed_history
 
 class ShowUpdater():
-    def __init__(self):
-        self.updateInterval = datetime.timedelta(hours=1)
 
     def run(self, force=False):
-
-        # update at 3 AM
-        run_updater_time = datetime.time(hour=3)
 
         update_datetime = datetime.datetime.now()
         update_date = update_datetime.date()
 
-        logger.log(u"Checking update interval", logger.DEBUG)
+        # refresh network timezones
+        network_timezones.update_network_dict()
 
-        hour_diff = update_datetime.time().hour - run_updater_time.hour
+        # sure, why not?
+        if sickbeard.USE_FAILED_DOWNLOADS:
+            failed_history.trimHistory()
 
-        # if it's less than an interval after the update time then do an update (or if we're forcing it)
-        if hour_diff >= 0 and hour_diff < self.updateInterval.seconds / 3600 or force:
-            logger.log(u"Doing full update on all shows")
-        else:
-            return
+        logger.log(u"Doing full update on all shows")
 
         # clean out cache directory, remove everything > 12 hours old
         if sickbeard.CACHE_DIR:
@@ -84,8 +79,8 @@ class ShowUpdater():
         stale_should_update = []
         stale_update_date = (update_date - datetime.timedelta(days=90)).toordinal()
 
-        myDB = db.DBConnection()
         # last_update_date <= 90 days, sorted ASC because dates are ordinal
+        myDB = db.DBConnection()
         sql_result = myDB.select(
             "SELECT indexer_id FROM tv_shows WHERE status = 'Ended' AND last_update_indexer <= ? ORDER BY last_update_indexer ASC LIMIT 10;",
             [stale_update_date])
@@ -98,6 +93,9 @@ class ShowUpdater():
         for curShow in sickbeard.showList:
 
             try:
+                # get next episode airdate
+                curShow.nextEpisode()
+
                 # if should_update returns True (not 'Ended') or show is selected stale 'Ended' then update, otherwise just refresh
                 if curShow.should_update(update_date=update_date) or curShow.indexerid in stale_should_update:
                     curQueueItem = sickbeard.showQueueScheduler.action.updateShow(curShow, True)  # @UndefinedVariable
@@ -113,3 +111,8 @@ class ShowUpdater():
                 logger.log(u"Automatic update failed: " + ex(e), logger.ERROR)
 
         ui.ProgressIndicators.setIndicator('dailyUpdate', ui.QueueProgressIndicator("Daily Update", piList))
+
+        logger.log(u"Completed full update on all shows")
+
+    def __del__(self):
+        pass

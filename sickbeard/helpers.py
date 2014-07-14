@@ -32,6 +32,7 @@ import urlparse
 import uuid
 import base64
 import string
+import zipfile
 
 from lib import requests
 from lib.requests import exceptions
@@ -50,13 +51,14 @@ except ImportError:
 from xml.dom.minidom import Node
 
 import sickbeard
-from sickbeard.exceptions import MultipleShowObjectsException, ex
+from sickbeard.exceptions import MultipleShowObjectsException, EpisodeNotFoundByAbsoluteNumberException, ex
 from sickbeard import logger, classes
 from sickbeard.common import USER_AGENT, mediaExtensions, subtitleExtensions, XML_NSMAP
 from sickbeard import db
 from sickbeard import encodingKludge as ek
 from sickbeard import notifiers
 from lib import subliminal
+from lib import adba
 
 urllib._urlopener = classes.SickBeardURLopener()
 
@@ -186,8 +188,7 @@ def getURL(url, post_data=None, headers=None, params=None, timeout=30, json=Fals
         url = urlparse.urlunparse(parsed)
 
         it = iter(req_headers)
-        
-        
+
         if use_proxy and sickbeard.PROXY_SETTING:
             logger.log("Using proxy for url: " + url, logger.DEBUG)
             proxies = {
@@ -260,10 +261,13 @@ def download_file(url, filename):
     return True
 
 def findCertainShow(showList, indexerid=None):
+    if not showList:
+        return None
+
     if indexerid:
-        results = filter(lambda x: x.indexerid == indexerid, showList)
+        results = filter(lambda x: int(x.indexerid) == int(indexerid), showList)
     else:
-        results = filter(lambda x: x.indexerid == indexerid, showList)
+        results = filter(lambda x: int(x.indexerid) == int(indexerid), showList)
 
     if len(results) == 0:
         return None
@@ -299,18 +303,16 @@ def makeDir(path):
 def searchDBForShow(regShowName, log=False):
     showNames = [re.sub('[. -]', ' ', regShowName)]
 
-    myDB = db.DBConnection()
-
     yearRegex = "([^()]+?)\s*(\()?(\d{4})(?(2)\))$"
 
+    myDB = db.DBConnection()
     for showName in showNames:
 
         sqlResults = myDB.select("SELECT * FROM tv_shows WHERE show_name LIKE ?",
                                  [showName])
 
         if len(sqlResults) == 1:
-            return (int(sqlResults[0]["indexer_id"]), sqlResults[0]["show_name"])
-
+            return int(sqlResults[0]["indexer_id"])
         else:
             # if we didn't get exactly one result then try again with the year stripped off if possible
             match = re.match(yearRegex, showName)
@@ -328,15 +330,14 @@ def searchDBForShow(regShowName, log=False):
                 continue
             elif len(sqlResults) > 1:
                 if log:
-                    logger.log(u"Multiple results for " + showName + " in the DB, unable to match show name", logger.DEBUG)
+                    logger.log(u"Multiple results for " + showName + " in the DB, unable to match show name",
+                               logger.DEBUG)
                 continue
             else:
-                return (int(sqlResults[0]["indexer_id"]), sqlResults[0]["show_name"])
-
-    return
+                return int(sqlResults[0]["indexer_id"])
 
 def searchIndexerForShowID(regShowName, indexer=None, indexer_id=None, ui=None):
-    showNames = list(set([re.sub('[. -]', ' ', regShowName), regShowName]))
+    showNames = [re.sub('[. -]', ' ', regShowName)]
 
     # Query Indexers for each search term and build the list of results
     for i in sickbeard.indexerApi().indexers if not indexer else int(indexer or []):
@@ -348,11 +349,16 @@ def searchIndexerForShowID(regShowName, indexer=None, indexer_id=None, ui=None):
         for name in showNames:
             logger.log(u"Trying to find " + name + " on " + sickbeard.indexerApi(i).name, logger.DEBUG)
 
-            search = t[indexer_id] if indexer_id else t[name]
+            try:
+                search = t[indexer_id] if indexer_id else t[name]
+            except:
+                continue
+
             try:
                 seriesname = search.seriesname
             except:
                 seriesname = None
+
             try:
                 series_id = search.id
             except:
@@ -370,6 +376,7 @@ def searchIndexerForShowID(regShowName, indexer=None, indexer_id=None, ui=None):
             break
 
     return (None, None, None)
+
 
 def sizeof_fmt(num):
     '''
@@ -519,7 +526,7 @@ def rename_ep_file(cur_path, new_path, old_path_length=0):
     old_path_length: The length of media file path (old name) WITHOUT THE EXTENSION
     """
 
-    new_dest_dir, new_dest_name = os.path.split(new_path)  #@UnusedVariable
+    new_dest_dir, new_dest_name = os.path.split(new_path)  # @UnusedVariable
 
     if old_path_length == 0 or old_path_length > len(cur_path):
         # approach from the right
@@ -530,10 +537,10 @@ def rename_ep_file(cur_path, new_path, old_path_length=0):
         cur_file_name = cur_path[:old_path_length]
 
     if cur_file_ext[1:] in subtitleExtensions:
-        #Extract subtitle language from filename
+        # Extract subtitle language from filename
         sublang = os.path.splitext(cur_file_name)[1][1:]
 
-        #Check if the language extracted from filename is a valid language
+        # Check if the language extracted from filename is a valid language
         try:
             language = subliminal.language.Language(sublang, strict=True)
             cur_file_ext = '.' + sublang + cur_file_ext
@@ -673,6 +680,60 @@ def fixSetGroupID(childPath):
                     childPath, parentGID), logger.ERROR)
 
 
+def is_anime_in_show_list():
+    for show in sickbeard.showList:
+        if show.is_anime:
+            return True
+    return False
+
+
+def update_anime_support():
+    sickbeard.ANIMESUPPORT = is_anime_in_show_list()
+
+
+def get_absolute_number_from_season_and_episode(show, season, episode):
+    myDB = db.DBConnection()
+    sql = "SELECT * FROM tv_episodes WHERE showid = ? and season = ? and episode = ?"
+    sqlResults = myDB.select(sql, [show.indexerid, season, episode])
+
+    if len(sqlResults) == 1:
+        absolute_number = int(sqlResults[0]["absolute_number"])
+        logger.log(
+            "Found absolute_number:" + str(absolute_number) + " by " + str(season) + "x" + str(episode), logger.DEBUG)
+
+        return absolute_number
+    else:
+        logger.log(
+            "No entries for absolute number in show: " + show.name + " found using " + str(season) + "x" + str(episode),
+            logger.DEBUG)
+
+    return None
+
+
+def get_all_episodes_from_absolute_number(show, indexer_id, absolute_numbers):
+    if len(absolute_numbers) == 0:
+        raise EpisodeNotFoundByAbsoluteNumberException
+
+    episodes = []
+    season = None
+
+    if not show and not indexer_id:
+        return (season, episodes)
+
+    if not show and indexer_id:
+        show = findCertainShow(sickbeard.showList, indexer_id)
+
+    for absolute_number in absolute_numbers:
+        ep = show.getEpisode(None, None, absolute_number=absolute_number)
+        if ep:
+            episodes.append(ep.episode)
+        else:
+            raise EpisodeNotFoundByAbsoluteNumberException
+        season = ep.season  # this will always take the last found seson so eps that cross the season border are not handeled well
+
+    return (season, episodes)
+
+
 def sanitizeSceneName(name, ezrss=False):
     """
     Takes a show name and returns the "scenified" version of it.
@@ -683,7 +744,6 @@ def sanitizeSceneName(name, ezrss=False):
     """
 
     if name:
-
         if not ezrss:
             bad_chars = u",:()'!?\u2019"
         # ezrss leaves : and ! in their show names as far as I can tell
@@ -711,10 +771,10 @@ def create_https_certificates(ssl_cert, ssl_key):
     Create self-signed HTTPS certificares and store in paths 'ssl_cert' and 'ssl_key'
     """
     try:
-        from lib.OpenSSL import crypto  # @UnresolvedImport
+        from OpenSSL import crypto  # @UnresolvedImport
         from lib.certgen import createKeyPair, createCertRequest, createCertificate, TYPE_RSA, \
             serial  # @UnresolvedImport
-    except:
+    except Exception, e:
         logger.log(u"pyopenssl module missing, please install for https access", logger.WARNING)
         return False
 
@@ -839,6 +899,51 @@ def backupVersionedFile(old_file, version):
     return True
 
 
+def restoreVersionedFile(backup_file, version):
+    numTries = 0
+
+    new_file, backup_version = os.path.splitext(backup_file)
+    restore_file = new_file + '.' + 'v' + str(version)
+
+    if not ek.ek(os.path.isfile, new_file):
+        logger.log(u"Not restoring, " + new_file + " doesn't exist", logger.DEBUG)
+        return False
+
+    try:
+        logger.log(
+            u"Trying to backup " + new_file + " to " + new_file + "." + "r" + str(version) + " before restoring backup",
+            logger.DEBUG)
+        shutil.move(new_file, new_file + '.' + 'r' + str(version))
+    except Exception, e:
+        logger.log(
+            u"Error while trying to backup DB file " + restore_file + " before proceeding with restore: " + ex(e),
+            logger.WARNING)
+        return False
+
+    while not ek.ek(os.path.isfile, new_file):
+        if not ek.ek(os.path.isfile, restore_file):
+            logger.log(u"Not restoring, " + restore_file + " doesn't exist", logger.DEBUG)
+            break
+
+        try:
+            logger.log(u"Trying to restore " + restore_file + " to " + new_file, logger.DEBUG)
+            shutil.copy(restore_file, new_file)
+            logger.log(u"Restore done", logger.DEBUG)
+            break
+        except Exception, e:
+            logger.log(u"Error while trying to restore " + restore_file + ": " + ex(e), logger.WARNING)
+            numTries += 1
+            time.sleep(1)
+            logger.log(u"Trying again.", logger.DEBUG)
+
+        if numTries >= 10:
+            logger.log(u"Unable to restore " + restore_file + " to " + new_file + " please do it manually.",
+                       logger.ERROR)
+            return False
+
+    return True
+
+
 # try to convert to int, if it fails the default will be returned
 def tryInt(s, s_default=0):
     try:
@@ -958,11 +1063,12 @@ def full_sanitizeSceneName(name):
     return re.sub('[. -]', ' ', sanitizeSceneName(name)).lower().lstrip()
 
 
-def _check_against_names(name, show):
-    nameInQuestion = full_sanitizeSceneName(name)
+def _check_against_names(nameInQuestion, show, season=-1):
+    showNames = []
+    if season in [-1, 1]:
+        showNames = [show.name]
 
-    showNames = [show.name]
-    showNames.extend(sickbeard.scene_exceptions.get_scene_exceptions(show.indexerid))
+    showNames.extend(sickbeard.scene_exceptions.get_scene_exceptions(show.indexerid, season=season))
 
     for showName in showNames:
         nameFromList = full_sanitizeSceneName(showName)
@@ -972,18 +1078,25 @@ def _check_against_names(name, show):
     return False
 
 
-def get_show_by_name(name):
+def get_show_by_name(name, useIndexer=False):
+    try:
+        # check cache for show
+        showObj = sickbeard.name_cache.retrieveShowFromCache(name)
+        if showObj:
+            return showObj
 
-    showObj = sickbeard.name_cache.retrieveShowFromCache(name)
-    if not showObj:
-        showNames = list(set(sickbeard.show_name_helpers.sceneToNormalShowNames(name)))
-        for showName in showNames if sickbeard.showList else []:
-            sceneResults = [x for x in sickbeard.showList if _check_against_names(showName, x)]
-            showObj = sceneResults[0] if len(sceneResults) else None
-            if showObj:
-                break
+        if useIndexer and sickbeard.showList and not showObj:
+            (sn, idx, id) = searchIndexerForShowID(full_sanitizeSceneName(name), ui=classes.ShowListUI)
+            if id:
+                showObj = findCertainShow(sickbeard.showList, int(id))
 
-    return showObj
+        # add show to cache
+        if showObj:
+            sickbeard.name_cache.addNameToCache(name, showObj.indexerid)
+
+        return showObj
+    except:
+        pass
 
 def is_hidden_folder(folder):
     """
@@ -996,6 +1109,7 @@ def is_hidden_folder(folder):
             return True
 
     return False
+
 
 def real_path(path):
     """
@@ -1020,3 +1134,73 @@ def validateShow(show, season=None, episode=None):
         return t[show.indexerid][season][episode]
     except (sickbeard.indexer_episodenotfound, sickbeard.indexer_seasonnotfound):
         pass
+
+
+def set_up_anidb_connection():
+    if not sickbeard.USE_ANIDB:
+        logger.log(u"Usage of anidb disabled. Skiping", logger.DEBUG)
+        return False
+
+    if not sickbeard.ANIDB_USERNAME and not sickbeard.ANIDB_PASSWORD:
+        logger.log(u"anidb username and/or password are not set. Aborting anidb lookup.", logger.DEBUG)
+        return False
+
+    if not sickbeard.ADBA_CONNECTION:
+        anidb_logger = lambda x: logger.log("ANIDB: " + str(x), logger.DEBUG)
+        sickbeard.ADBA_CONNECTION = adba.Connection(keepAlive=True, log=anidb_logger)
+
+    if not sickbeard.ADBA_CONNECTION.authed():
+        try:
+            sickbeard.ADBA_CONNECTION.auth(sickbeard.ANIDB_USERNAME, sickbeard.ANIDB_PASSWORD)
+        except Exception, e:
+            logger.log(u"exception msg: " + str(e))
+            return False
+    else:
+        return True
+
+    return sickbeard.ADBA_CONNECTION.authed()
+
+
+def makeZip(fileList, archive):
+    """
+    'fileList' is a list of file names - full path each name
+    'archive' is the file name for the archive with a full path
+    """
+    try:
+        a = zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED)
+        for f in fileList:
+            a.write(f)
+        a.close()
+        return True
+    except Exception as e:
+        logger.log(u"Zip creation error: " + str(e), logger.ERROR)
+        return False
+
+
+def extractZip(archive, targetDir):
+    """
+    'fileList' is a list of file names - full path each name
+    'archive' is the file name for the archive with a full path
+    """
+    try:
+        if not os.path.exists(targetDir):
+            os.mkdir(targetDir)
+
+        zip_file = zipfile.ZipFile(archive, 'r')
+        for member in zip_file.namelist():
+            filename = os.path.basename(member)
+            # skip directories
+            if not filename:
+                continue
+
+            # copy file (taken from zipfile's extract)
+            source = zip_file.open(member)
+            target = file(os.path.join(targetDir, filename), "wb")
+            shutil.copyfileobj(source, target)
+            source.close()
+            target.close()
+        zip_file.close()
+        return True
+    except Exception as e:
+        logger.log(u"Zip extraction error: " + str(e), logger.ERROR)
+        return False

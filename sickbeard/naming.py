@@ -40,11 +40,9 @@ name_abd_presets = ('%SN - %A-D - %EN',
                     '%Y/%0M/%S.N.%A.D.%E.N-%RG'
 )
 
-name_sports_presets = ('%SN - %Sx%0E - %EN',
-                '%S.N.S%0SE%0E.%E.N',
-                '%Sx%0E - %EN',
-                'S%0SE%0E - %EN',
-                'Season %0S/%S.N.S%0SE%0E.%Q.N-%RG'
+name_sports_presets = ('%SN - %A-D - %EN',
+                    '%S.N.%A.D.%E.N.%Q.N',
+                    '%Y/%0M/%S.N.%A.D.%E.N-%RG'
 )
 
 class TVShow():
@@ -53,15 +51,44 @@ class TVShow():
         self.genre = "Comedy"
         self.air_by_date = 0
         self.sports = 0
+        self.anime = 0
+        self.scene = 0
+
+    def _is_anime(self):
+        if (self.anime > 0):
+            return True
+        else:
+            return False
+
+    is_anime = property(_is_anime)
+
+    def _is_sports(self):
+        if (self.sports > 0):
+            return True
+        else:
+            return False
+
+    is_sports = property(_is_sports)
+
+    def _is_scene(self):
+        if (self.scene > 0):
+            return True
+        else:
+            return False
+
+    is_scene = property(_is_scene)
+
 
 class TVEpisode(tv.TVEpisode):
-    def __init__(self, season, episode, name):
+    def __init__(self, season, episode, absolute_number, name):
         self.relatedEps = []
         self._name = name
         self._season = season
         self._episode = episode
-        self._scene_season = season
-        self._scene_episode = episode
+        self._absolute_number = absolute_number
+        self.scene_season = season
+        self.scene_episode = episode
+        self.scene_absolute_number = absolute_number
         self._airdate = datetime.date(2010, 3, 9)
         self.show = TVShow()
         self._status = Quality.compositeStatus(common.DOWNLOADED, common.Quality.SDTV)
@@ -69,7 +96,7 @@ class TVEpisode(tv.TVEpisode):
         self._is_proper = True
 
 
-def check_force_season_folders(pattern=None, multi=None):
+def check_force_season_folders(pattern=None, multi=None, anime_type=None):
     """
     Checks if the name can still be parsed if you strip off the folders to determine if we need to force season folders
     to be enabled or not.
@@ -79,15 +106,18 @@ def check_force_season_folders(pattern=None, multi=None):
     if pattern == None:
         pattern = sickbeard.NAMING_PATTERN
 
-    valid = not validate_name(pattern, None, file_only=True)
+    if anime_type == None:
+        anime_type = sickbeard.NAMING_ANIME
+
+    valid = not validate_name(pattern, None, anime_type, file_only=True)
 
     if multi != None:
-        valid = valid or not validate_name(pattern, multi, file_only=True)
+        valid = valid or not validate_name(pattern, multi, anime_type, file_only=True)
 
     return valid
 
 
-def check_valid_naming(pattern=None, multi=None):
+def check_valid_naming(pattern=None, multi=None, anime_type=None):
     """
     Checks if the name is can be parsed back to its original form for both single and multi episodes.
     
@@ -96,12 +126,15 @@ def check_valid_naming(pattern=None, multi=None):
     if pattern == None:
         pattern = sickbeard.NAMING_PATTERN
 
+    if anime_type == None:
+        anime_type = sickbeard.NAMING_ANIME
+
     logger.log(u"Checking whether the pattern " + pattern + " is valid for a single episode", logger.DEBUG)
-    valid = validate_name(pattern, None)
+    valid = validate_name(pattern, None, anime_type)
 
     if multi != None:
         logger.log(u"Checking whether the pattern " + pattern + " is valid for a multi episode", logger.DEBUG)
-        valid = valid and validate_name(pattern, multi)
+        valid = valid and validate_name(pattern, multi, anime_type)
 
     return valid
 
@@ -134,12 +167,10 @@ def check_valid_sports_naming(pattern=None):
 
     return valid
 
-def validate_name(pattern, multi=None, file_only=False, abd=False, sports=False):
-    ep = _generate_sample_ep(multi, abd, sports)
+def validate_name(pattern, multi=None, anime_type=None, file_only=False, abd=False, sports=False):
+    ep = generate_sample_ep(multi, abd, sports, anime_type)
 
-    parser = NameParser(True)
-
-    new_name = ep.formatted_filename(pattern, multi) + '.ext'
+    new_name = ep.formatted_filename(pattern, multi, anime_type) + '.ext'
     new_path = ep.formatted_dir(pattern, multi)
     if not file_only:
         new_name = ek.ek(os.path.join, new_path, new_name)
@@ -150,9 +181,11 @@ def validate_name(pattern, multi=None, file_only=False, abd=False, sports=False)
 
     logger.log(u"Trying to parse " + new_name, logger.DEBUG)
 
+    parser = NameParser(True, showObj=ep.show, naming_pattern=True)
+
     try:
         result = parser.parse(new_name)
-    except InvalidNameException, e  :
+    except Exception, e:
         logger.log(u"Unable to parse " + new_name + ", not valid", logger.DEBUG)
         return False
 
@@ -162,20 +195,28 @@ def validate_name(pattern, multi=None, file_only=False, abd=False, sports=False)
         if result.air_date != ep.airdate:
             logger.log(u"Air date incorrect in parsed episode, pattern isn't valid", logger.DEBUG)
             return False
+    elif sports:
+        if result.sports_event_date != ep.airdate:
+            logger.log(u"Sports event date incorrect in parsed episode, pattern isn't valid", logger.DEBUG)
+            return False
+    elif anime_type != 3:
+        if len(result.ab_episode_numbers) and result.ab_episode_numbers != [x.absolute_number for x in [ep] + ep.relatedEps]:
+            logger.log(u"Absolute numbering incorrect in parsed episode, pattern isn't valid", logger.DEBUG)
+            return False
     else:
         if result.season_number != ep.season:
-            logger.log(u"Season incorrect in parsed episode, pattern isn't valid", logger.DEBUG)
+            logger.log(u"Season number incorrect in parsed episode, pattern isn't valid", logger.DEBUG)
             return False
         if result.episode_numbers != [x.episode for x in [ep] + ep.relatedEps]:
-            logger.log(u"Episode incorrect in parsed episode, pattern isn't valid", logger.DEBUG)
+            logger.log(u"Episode numbering incorrect in parsed episode, pattern isn't valid", logger.DEBUG)
             return False
 
     return True
 
 
-def _generate_sample_ep(multi=None, abd=False, sports=False):
+def generate_sample_ep(multi=None, abd=False, sports=False, anime_type=None):
     # make a fake episode object
-    ep = TVEpisode(2, 3, "Ep Name")
+    ep = TVEpisode(2, 3, 3, "Ep Name")
 
     ep._status = Quality.compositeStatus(DOWNLOADED, Quality.HDTV)
     ep._airdate = datetime.date(2011, 3, 9)
@@ -187,27 +228,43 @@ def _generate_sample_ep(multi=None, abd=False, sports=False):
         ep._release_name = 'Show.Name.100.Fighter.vs.Fighter.HDTV.XviD-RLSGROUP'
         ep.show.sports = 1
     else:
-        ep._release_name = 'Show.Name.S02E03.HDTV.XviD-RLSGROUP'
+        if anime_type != 3:
+            ep.show.anime = 1
+            ep._release_name = 'Show.Name.003.HDTV.XviD-RLSGROUP'
+        else:
+            ep._release_name = 'Show.Name.S02E03.HDTV.XviD-RLSGROUP'
 
     if multi != None:
         ep._name = "Ep Name (1)"
-        ep._release_name = 'Show.Name.S02E03E04E05.HDTV.XviD-RLSGROUP'
 
-        secondEp = TVEpisode(2, 4, "Ep Name (2)")
-        secondEp._status = Quality.compositeStatus(DOWNLOADED, Quality.HDTV)
-        secondEp._release_name = ep._release_name
+        if anime_type != 3:
+            ep.show.anime = 1
 
-        thirdEp = TVEpisode(2, 5, "Ep Name (3)")
-        thirdEp._status = Quality.compositeStatus(DOWNLOADED, Quality.HDTV)
-        thirdEp._release_name = ep._release_name
+            ep._release_name = 'Show.Name.003-004.HDTV.XviD-RLSGROUP'
 
-        ep.relatedEps.append(secondEp)
-        ep.relatedEps.append(thirdEp)
+            secondEp = TVEpisode(2, 4, 4, "Ep Name (2)")
+            secondEp._status = Quality.compositeStatus(DOWNLOADED, Quality.HDTV)
+            secondEp._release_name = ep._release_name
+
+            ep.relatedEps.append(secondEp)
+        else:
+            ep._release_name = 'Show.Name.S02E03E04E05.HDTV.XviD-RLSGROUP'
+
+            secondEp = TVEpisode(2, 4, 4, "Ep Name (2)")
+            secondEp._status = Quality.compositeStatus(DOWNLOADED, Quality.HDTV)
+            secondEp._release_name = ep._release_name
+
+            thirdEp = TVEpisode(2, 5, 5, "Ep Name (3)")
+            thirdEp._status = Quality.compositeStatus(DOWNLOADED, Quality.HDTV)
+            thirdEp._release_name = ep._release_name
+
+            ep.relatedEps.append(secondEp)
+            ep.relatedEps.append(thirdEp)
 
     return ep
 
 
-def test_name(pattern, multi=None, abd=False, sports=False):
-    ep = _generate_sample_ep(multi, abd, sports)
+def test_name(pattern, multi=None, abd=False, sports=False, anime_type=None):
+    ep = generate_sample_ep(multi, abd, sports, anime_type)
 
-    return {'name': ep.formatted_filename(pattern, multi), 'dir': ep.formatted_dir(pattern, multi)}
+    return {'name': ep.formatted_filename(pattern, multi, anime_type), 'dir': ep.formatted_dir(pattern, multi)}

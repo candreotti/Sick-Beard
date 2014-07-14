@@ -28,7 +28,7 @@ import datetime
 import sickbeard
 import generic
 from sickbeard.common import Quality, cpu_presets
-from sickbeard.name_parser.parser import NameParser, InvalidNameException
+from sickbeard.name_parser.parser import NameParser, InvalidNameException, InvalidShowException
 from sickbeard import db
 from sickbeard import classes
 from sickbeard import logger
@@ -73,9 +73,9 @@ class ThePirateBayProvider(generic.TorrentProvider):
     def imageName(self):
         return 'thepiratebay.png'
 
-    def getQuality(self, item):
+    def getQuality(self, item, anime=False):
 
-        quality = Quality.sceneQuality(item[0])
+        quality = Quality.sceneQuality(item[0], anime)
         return quality
 
     def _reverseQuality(self, quality):
@@ -153,7 +153,7 @@ class ThePirateBayProvider(generic.TorrentProvider):
         try:
             myParser = NameParser()
             parse_result = myParser.parse(fileName)
-        except InvalidNameException:
+        except (InvalidNameException, InvalidShowException):
             return None
 
         logger.log(u"Season quality for " + title + " is " + Quality.qualityStrings[quality], logger.DEBUG)
@@ -167,17 +167,20 @@ class ThePirateBayProvider(generic.TorrentProvider):
     def _get_season_search_strings(self, ep_obj):
 
         search_string = {'Season': []}
-        for show_name in set(allPossibleShowNames(self.show)) if not (ep_obj.show.air_by_date or ep_obj.show.sports) else []:
+        for show_name in set(allPossibleShowNames(self.show)):
             if ep_obj.show.air_by_date or ep_obj.show.sports:
-                ep_string = show_name + str(ep_obj.airdate).split('-')[0]
-            else:
-                ep_string = show_name + ' S%02d' % int(ep_obj.scene_season)  #1) showName SXX
-            search_string['Season'].append(ep_string)
-
-            if ep_obj.show.air_by_date or ep_obj.show.sports:
+                ep_string = show_name + ' ' + str(ep_obj.airdate).split('-')[0]
+                search_string['Season'].append(ep_string)
                 ep_string = show_name + ' Season ' + str(ep_obj.airdate).split('-')[0]
+                search_string['Season'].append(ep_string)
+            elif ep_obj.show.anime:
+                ep_string = show_name + ' ' + "%d" % ep_obj.scene_absolute_number
+                search_string['Season'].append(ep_string)
             else:
-                ep_string = show_name + ' Season ' + str(ep_obj.scene_season) + ' -Ep*'  #2) showName Season X
+                ep_string = show_name + ' S%02d' % int(ep_obj.scene_season)
+                search_string['Season'].append(ep_string)
+                ep_string = show_name + ' Season ' + str(ep_obj.scene_season) + ' -Ep*'
+                search_string['Season'].append(ep_string)
 
             search_string['Season'].append(ep_string)
 
@@ -198,18 +201,18 @@ class ThePirateBayProvider(generic.TorrentProvider):
                             str(ep_obj.airdate).replace('-', '|') + '|' + \
                             ep_obj.airdate.strftime('%b')
                 search_string['Episode'].append(ep_string)
+        elif self.show.anime:
+            for show_name in set(allPossibleShowNames(self.show)):
+                ep_string = sanitizeSceneName(show_name) + ' ' + \
+                            "%i" % int(ep_obj.scene_absolute_number)
+                search_string['Episode'].append(ep_string)
         else:
             for show_name in set(allPossibleShowNames(self.show)):
                 ep_string = sanitizeSceneName(show_name) + ' ' + \
                             sickbeard.config.naming_ep_type[2] % {'seasonnumber': ep_obj.scene_season,
                                                                   'episodenumber': ep_obj.scene_episode} + '|' + \
                             sickbeard.config.naming_ep_type[0] % {'seasonnumber': ep_obj.scene_season,
-                                                                  'episodenumber': ep_obj.scene_episode} + '|' + \
-                            sickbeard.config.naming_ep_type[3] % {'seasonnumber': ep_obj.scene_season,
-                                                                  'episodenumber': ep_obj.scene_episode}
-
-                ep_string += ' %s' % add_string
-
+                                                                  'episodenumber': ep_obj.scene_episode} + ' %s' % add_string
                 search_string['Episode'].append(re.sub('\s+', ' ', ep_string))
 
         return [search_string]
@@ -251,7 +254,7 @@ class ThePirateBayProvider(generic.TorrentProvider):
                         continue
 
                         #Accept Torrent only from Good People for every Episode Search
-                    if self.confirmed and re.search('(VIP|Trusted|Helper)', torrent.group(0)) is None:
+                    if self.confirmed and re.search('(VIP|Trusted|Helper|Moderator)', torrent.group(0)) is None:
                         logger.log(u"ThePirateBay Provider found result " + torrent.group(
                             'title') + " but that doesn't seem like a trusted result so I'm ignoring it", logger.DEBUG)
                         continue
@@ -366,26 +369,29 @@ class ThePirateBayProvider(generic.TorrentProvider):
 
         results = []
 
-        sqlResults = db.DBConnection().select(
+        myDB = db.DBConnection()
+        sqlResults = myDB.select(
             'SELECT s.show_name, e.showid, e.season, e.episode, e.status, e.airdate FROM tv_episodes AS e' +
             ' INNER JOIN tv_shows AS s ON (e.showid = s.indexer_id)' +
             ' WHERE e.airdate >= ' + str(search_date.toordinal()) +
             ' AND (e.status IN (' + ','.join([str(x) for x in Quality.DOWNLOADED]) + ')' +
             ' OR (e.status IN (' + ','.join([str(x) for x in Quality.SNATCHED]) + ')))'
         )
+
         if not sqlResults:
             return []
 
         for sqlshow in sqlResults:
-            self.show = curshow = helpers.findCertainShow(sickbeard.showList, int(sqlshow["showid"]))
-            if not self.show: continue
-            curEp = curshow.getEpisode(int(sqlshow["season"]), int(sqlshow["episode"]))
+            self.show = helpers.findCertainShow(sickbeard.showList, int(sqlshow["showid"]))
 
-            searchString = self._get_episode_search_strings(curEp, add_string='PROPER|REPACK')
+            if self.show:
+                curEp = self.show.getEpisode(int(sqlshow["season"]), int(sqlshow["episode"]))
 
-            for item in self._doSearch(searchString[0]):
-                title, url = self._get_title_and_url(item)
-                results.append(classes.Proper(title, url, datetime.datetime.today()))
+                searchString = self._get_episode_search_strings(curEp, add_string='PROPER|REPACK')
+
+                for item in self._doSearch(searchString[0]):
+                    title, url = self._get_title_and_url(item)
+                    results.append(classes.Proper(title, url, datetime.datetime.today()))
 
         return results
 
@@ -426,8 +432,12 @@ class ThePirateBayCache(tvcache.TVCache):
             if ci is not None:
                 cl.append(ci)
 
-        myDB = self._getDB()
-        myDB.mass_action(cl)
+
+
+        if cl:
+            myDB = self._getDB()
+            myDB.mass_action(cl)
+
 
     def _parseItem(self, item):
 

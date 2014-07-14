@@ -32,7 +32,9 @@ __all__ = ['ezrss',
            'iptorrents',
            'omgwtfnzbs',
            'nextgen',
-           'speedcd'
+           'speedcd',
+           'nyaatorrents',
+           'fanzub'
 ]
 
 import sickbeard
@@ -139,29 +141,36 @@ def makeTorrentRssProvider(configString):
     if not configString:
         return None
 
+    cookies = None
     search_mode = 'eponly'
     search_fallback = 0
     backlog_only = 0
 
     try:
-        name, url, enabled, search_mode, search_fallback, backlog_only = configString.split('|')
+        name, url, cookies, enabled, search_mode, search_fallback, backlog_only = configString.split('|')
     except ValueError:
         try:
-            name, url, enabled = configString.split('|')
+            name, url, enabled, search_mode, search_fallback, backlog_only = configString.split('|')
         except ValueError:
-            logger.log(u"Skipping RSS Torrent provider string: '" + configString + "', incorrect format", logger.ERROR)
-            return None
+            try:
+                name, url, enabled = configString.split('|')
+            except ValueError:
+                logger.log(u"Skipping RSS Torrent provider string: '" + configString + "', incorrect format", logger.ERROR)
+                return None
 
-    torrentRss = sys.modules['sickbeard.providers.rsstorrent']
+    try:
+        torrentRss = sys.modules['sickbeard.providers.rsstorrent']
+    except:
+        return
 
-    newProvider = torrentRss.TorrentRssProvider(name, url, search_mode, search_fallback, backlog_only)
+    newProvider = torrentRss.TorrentRssProvider(name, url, cookies, search_mode, search_fallback, backlog_only)
     newProvider.enabled = enabled == '1'
 
     return newProvider
 
 
 def getDefaultNewznabProviders():
-    return 'Sick Beard Index|http://lolo.sickbeard.com/|0|5030,5040,5060|0|eponly|0!!!NZBs.org|https://nzbs.org/||5030,5040,5060,5070,5090|0|eponly|0!!!Usenet-Crawler|https://www.usenet-crawler.com/||5030,5040,5060|0|eponly|0'
+    return 'Sick Beard Index|http://lolo.sickbeard.com/|0|5030,5040|0|eponly|0!!!NZBs.org|https://nzbs.org/||5030,5040|0|eponly|0!!!Usenet-Crawler|https://www.usenet-crawler.com/||5030,5040|0|eponly|0'
 
 
 def getProviderModule(name):

@@ -17,10 +17,9 @@
 # along with SickBeard.  If not, see <http://www.gnu.org/licenses/>.
 
 from __future__ import with_statement
-import time
+
 import datetime
 import threading
-import traceback
 
 import sickbeard
 from sickbeard import logger
@@ -29,8 +28,7 @@ from sickbeard import common
 from sickbeard import helpers
 from sickbeard import exceptions
 from sickbeard.exceptions import ex
-from sickbeard.search import pickBestResult, snatchEpisode
-from sickbeard import generic_queue
+
 
 class DailySearcher():
     def __init__(self):
@@ -42,18 +40,33 @@ class DailySearcher():
 
         self.amActive = True
 
-        # remove names from cache that link back to active shows that we watch
-        sickbeard.name_cache.syncNameCache()
+        providers = [x for x in sickbeard.providers.sortedProviderList() if x.isActive() and not x.backlog_only]
+        for curProviderCount, curProvider in enumerate(providers):
 
-        logger.log(u"Searching for coming episodes and 1 weeks worth of previously WANTED episodes ...")
+            try:
+                logger.log(u"Updating [" + curProvider.name + "] RSS cache ...")
+                curProvider.cache.updateCache()
+            except exceptions.AuthException, e:
+                logger.log(u"Authentication error: " + ex(e), logger.ERROR)
+                if curProviderCount != len(providers):
+                    continue
+                break
+            except Exception, e:
+                logger.log(u"Error while updating cache for " + curProvider.name + ", skipping: " + ex(e), logger.ERROR)
+                if curProviderCount != len(providers):
+                    continue
+                break
+
+        logger.log(u"Searching for coming episodes and 1 week worth of previously WANTED episodes ...")
 
         fromDate = datetime.date.today() - datetime.timedelta(weeks=1)
         curDate = datetime.date.today()
 
         myDB = db.DBConnection()
-        sqlResults = myDB.select("SELECT * FROM tv_episodes WHERE status in (?,?) AND airdate >= ? AND airdate <= ?",
-                                 [common.UNAIRED, common.WANTED, fromDate.toordinal(), curDate.toordinal()])
+        sqlResults = myDB.select("SELECT * FROM tv_episodes WHERE status in (?,?,?) AND airdate >= ? AND airdate <= ?",
+                                 [common.UNAIRED, common.WANTED, common.SKIPPED, fromDate.toordinal(), curDate.toordinal()])
 
+        sql_l = []
         todaysEps = {}
         for sqlEp in sqlResults:
 
@@ -61,12 +74,12 @@ class DailySearcher():
                 show = helpers.findCertainShow(sickbeard.showList, int(sqlEp["showid"]))
             except exceptions.MultipleShowObjectsException:
                 logger.log(u"ERROR: expected to find a single show matching " + sqlEp["showid"])
-                return None
+                break
 
-            if show == None:
+            if not show:
                 logger.log(u"Unable to find the show with ID " + str(
                     sqlEp["showid"]) + " in your show list! DB value was " + str(sqlEp), logger.ERROR)
-                return None
+                break
 
             ep = show.getEpisode(sqlEp["season"], sqlEp["episode"])
             with ep.lock:
@@ -77,7 +90,25 @@ class DailySearcher():
                         logger.log(u"New episode " + ep.prettyName() + " airs today, setting status to WANTED")
                         ep.status = common.WANTED
 
-                ep.saveToDB()
+                if ep.status == common.UNAIRED:
+
+                    myDB = db.DBConnection()
+                    sql_selection="SELECT show_name, tvdb_id, season, episode, paused FROM (SELECT * FROM tv_shows s,tv_episodes e WHERE s.tvdb_id = e.showid) T1 WHERE T1.paused = 0 and T1.episode_id IN (SELECT T2.episode_id FROM tv_episodes T2 WHERE T2.showid = T1.tvdb_id and T2.status in (?,?,?,?) and T2.season!=0 ORDER BY T2.season,T2.episode LIMIT 1) ORDER BY T1.show_name,season,episode"
+                    results = myDB.select(sql_selection, [common.SNATCHED, common.WANTED, common.SKIPPED, common.DOWNLOADABLE])
+
+                    show_sk = [show for show in results if show["tvdb_id"] == sqlEp["showid"]]
+		    if not show_sk or not sickbeard.USE_TRAKT:
+                        logger.log(u"New episode " + ep.prettyName() + " airs today, setting status to WANTED")
+			ep.status = common.WANTED
+                    else:
+                        sn_sk = show_sk[0]["season"]
+                        ep_sk = show_sk[0]["episode"]
+                        if (int(sn_sk)*100+int(ep_sk)) < (int(sqlEp["season"])*100+int(sqlEp["episode"])) or not show_sk:
+                            logger.log(u"New episode " + ep.prettyName() + " airs today, setting status to WANTED, due to trakt integration")
+                    	    ep.status = common.SKIPPED
+		        else:
+                            logger.log(u"New episode " + ep.prettyName() + " airs today, setting status to WANTED")
+                    	    ep.status = common.WANTED
 
                 if ep.status == common.WANTED:
                     if show not in todaysEps:
@@ -85,10 +116,20 @@ class DailySearcher():
                     else:
                         todaysEps[show].append(ep)
 
+                sql_l.append(ep.get_sql())
+
+        if sql_l:
+            myDB = db.DBConnection()
+            myDB.mass_action(sql_l)
+
+
         if len(todaysEps):
             for show in todaysEps:
                 segment = todaysEps[show]
+
                 dailysearch_queue_item = sickbeard.search_queue.DailySearchQueueItem(show, segment)
-                sickbeard.searchQueueScheduler.action.add_item(dailysearch_queue_item)  #@UndefinedVariable
+                sickbeard.searchQueueScheduler.action.add_item(dailysearch_queue_item)
         else:
             logger.log(u"Could not find any needed episodes to search for ...")
+
+        self.amActive = False

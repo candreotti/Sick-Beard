@@ -41,6 +41,11 @@ class GenericQueue(object):
         
         self.currentItem = None
 
+        self.lock = threading.Lock()
+
+    def __del__(self):
+        pass
+
     def pause(self):
         logger.log(u"Pausing queue")
         self.min_priority = 999999999999
@@ -59,7 +64,6 @@ class GenericQueue(object):
 
         # only start a new task if one isn't already going
         if self.thread == None or self.thread.isAlive() == False:
-
             # if the thread is dead then the current item should be finished
             if self.currentItem != None:
                 self.currentItem.finish()
@@ -84,7 +88,7 @@ class GenericQueue(object):
                         return y.priority-x.priority
 
                 self.queue.sort(cmp=sorter)
-                
+
                 queueItem = self.queue[0]
 
                 if queueItem.priority < self.min_priority:
@@ -114,6 +118,9 @@ class QueueItem:
         self.action_id = action_id
         
         self.added = None
+
+    def __del__(self):
+        pass
 
     def get_thread_name(self):
         if self.thread_name:

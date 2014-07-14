@@ -33,36 +33,20 @@ from sickbeard import history
 
 from sickbeard.common import DOWNLOADED, SNATCHED, SNATCHED_PROPER, Quality
 
-from name_parser.parser import NameParser, InvalidNameException
+from name_parser.parser import NameParser, InvalidNameException, InvalidShowException
 
 
 class ProperFinder():
     def __init__(self):
         self.amActive = False
-        self.updateInterval = datetime.timedelta(hours=1)
 
-        check_propers_interval = {'15m': 15, '45m': 45, '90m': 90, '4h': 4*60, 'daily': 24*60}
-        for curInterval in ('15m', '45m', '90m', '4h', 'daily'):
-            if sickbeard.CHECK_PROPERS_INTERVAL == curInterval:
-                self.updateInterval = datetime.timedelta(minutes = check_propers_interval[curInterval])
+    def __del__(self):
+        pass
 
     def run(self, force=False):
 
         if not sickbeard.DOWNLOAD_PROPERS:
             return
-
-        # look for propers every night at 1 AM
-        updateTime = datetime.time(hour=1)
-
-        logger.log(u"Checking proper time", logger.DEBUG)
-
-        hourDiff = datetime.datetime.today().time().hour - updateTime.hour
-        dayDiff = (datetime.date.today() - self._get_lastProperSearch()).days
-
-        if sickbeard.CHECK_PROPERS_INTERVAL == "daily" and not force:
-            # if it's less than an interval after the update time then do an update
-            if not (hourDiff >= 0 and hourDiff < self.updateInterval.seconds / 3600 or dayDiff >= 1):
-                return
 
         logger.log(u"Beginning the search for new propers")
 
@@ -75,11 +59,14 @@ class ProperFinder():
 
         self._set_lastProperSearch(datetime.datetime.today().toordinal())
 
-        msg = u"Completed the search for new propers, next check "
-        if sickbeard.CHECK_PROPERS_INTERVAL == "daily":
-            logger.log(u"%sat 1am tomorrow" % msg)
-        else:
-            logger.log(u"%sin ~%s" % (msg, sickbeard.CHECK_PROPERS_INTERVAL))
+        run_at = ""
+        if None is sickbeard.properFinderScheduler.start_time:
+            run_in = sickbeard.properFinderScheduler.lastRun + sickbeard.properFinderScheduler.cycleTime - datetime.datetime.now()
+            hours, remainder = divmod(run_in.seconds, 3600)
+            minutes, seconds = divmod(remainder, 60)
+            run_at = u", next check in approx. " + ("%dh, %dm" % (hours, minutes) if 0 < hours else "%dm, %ds" % (minutes, seconds))
+
+        logger.log(u"Completed the search for new propers%s" % run_at)
 
         self.amActive = False
 
@@ -116,7 +103,6 @@ class ProperFinder():
         sortedPropers = sorted(propers.values(), key=operator.attrgetter('date'), reverse=True)
         finalPropers = []
         for curProper in sortedPropers:
-            in_cache = False
 
             try:
                 myParser = NameParser(False)
@@ -124,41 +110,12 @@ class ProperFinder():
             except InvalidNameException:
                 logger.log(u"Unable to parse the filename " + curProper.name + " into a valid episode", logger.DEBUG)
                 continue
+            except InvalidShowException:
+                logger.log(u"Unable to parse the filename " + curProper.name + " into a valid show", logger.WARNING)
+                continue
 
             if not parse_result.series_name:
                 continue
-
-            cacheResult = sickbeard.name_cache.retrieveNameFromCache(parse_result.series_name)
-            if cacheResult:
-                in_cache = True
-                curProper.indexerid = int(cacheResult)
-            elif cacheResult == 0:
-                return None
-
-            if not curProper.indexerid:
-                showResult = helpers.searchDBForShow(parse_result.series_name)
-                if showResult:
-                    curProper.indexerid = int(showResult[0])
-
-            if not curProper.indexerid:
-                for curShow in sickbeard.showList:
-                    if show_name_helpers.isGoodResult(curProper.name, curShow, False):
-                        curProper.indexerid = curShow.indexerid
-                        break
-
-            showObj = None
-            if curProper.indexerid:
-                showObj = helpers.findCertainShow(sickbeard.showList, curProper.indexerid)
-
-            if not showObj:
-                sickbeard.name_cache.addNameToCache(parse_result.series_name, 0)
-                continue
-
-            if not in_cache:
-                sickbeard.name_cache.addNameToCache(parse_result.series_name, curProper.indexerid)
-
-            # scene numbering -> indexer numbering
-            parse_result = parse_result.convert(showObj)
 
             if not parse_result.episode_numbers:
                 logger.log(
@@ -166,54 +123,34 @@ class ProperFinder():
                     logger.DEBUG)
                 continue
 
+            showObj = parse_result.show
+            logger.log(
+                u"Successful match! Result " + parse_result.original_name + " matched to show " + showObj.name,
+                logger.DEBUG)
+
+            # set the indexerid in the db to the show's indexerid
+            curProper.indexerid = showObj.indexerid
+
+            # set the indexer in the db to the show's indexer
+            curProper.indexer = showObj.indexer
+
             # populate our Proper instance
             if parse_result.air_by_date or parse_result.sports:
                 curProper.season = -1
                 curProper.episode = parse_result.air_date or parse_result.sports_event_date
             else:
-                curProper.season = parse_result.season_number if parse_result.season_number != None else 1
-                curProper.episode = parse_result.episode_numbers[0]
+                if parse_result.is_anime:
+                    logger.log(u"I am sorry '"+curProper.name+"' seams to be an anime proper seach is not yet suported", logger.DEBUG)
+                    continue
+                else:
+                    curProper.season = parse_result.season_number if parse_result.season_number != None else 1
+                    curProper.episode = parse_result.episode_numbers[0]
 
-            curProper.quality = Quality.nameQuality(curProper.name)
-
-            # for each show in our list
-            for curShow in sickbeard.showList:
-
-                genericName = self._genericName(parse_result.series_name)
-
-                # get the scene name masks
-                sceneNames = set(show_name_helpers.makeSceneShowSearchStrings(curShow))
-
-                # for each scene name mask
-                for curSceneName in sceneNames:
-
-                    # if it matches
-                    if genericName == self._genericName(curSceneName):
-                        logger.log(
-                            u"Successful match! Result " + parse_result.series_name + " matched to show " + curShow.name,
-                            logger.DEBUG)
-
-                        # set the indexerid in the db to the show's indexerid
-                        curProper.indexerid = curShow.indexerid
-
-                        # set the indexer in the db to the show's indexer
-                        curProper.indexer = curShow.indexer
-
-                        # since we found it, break out
-                        break
-
-                # if we found something in the inner for loop break out of this one
-                if curProper.indexerid != -1:
-                    break
+            curProper.quality = Quality.nameQuality(curProper.name, parse_result.is_anime)
 
             if not show_name_helpers.filterBadReleases(curProper.name):
                 logger.log(u"Proper " + curProper.name + " isn't a valid scene release that we want, igoring it",
                            logger.DEBUG)
-                continue
-
-            showObj = helpers.findCertainShow(sickbeard.showList, curProper.indexerid)
-            if not showObj:
-                logger.log(u"Unable to find the show with indexerID " + str(curProper.indexerid), logger.ERROR)
                 continue
 
             if showObj.rls_ignore_words and search.filter_release_name(curProper.name, showObj.rls_ignore_words):
@@ -246,11 +183,14 @@ class ProperFinder():
                     continue
 
             # check if we actually want this proper (if it's the right quality)
-            sqlResults = db.DBConnection().select(
+            myDB = db.DBConnection()
+            sqlResults = myDB.select(
                 "SELECT status FROM tv_episodes WHERE showid = ? AND season = ? AND episode = ?",
                 [curProper.indexerid, curProper.season, curProper.episode])
+
             if not sqlResults:
                 continue
+
             oldStatus, oldQuality = Quality.splitCompositeStatus(int(sqlResults[0]["status"]))
 
             # only keep the proper if we have already retrieved the same quality ep (don't get better/worse ones)
@@ -327,8 +267,8 @@ class ProperFinder():
         sqlResults = myDB.select("SELECT * FROM info")
 
         if len(sqlResults) == 0:
-            myDB.action("INSERT INTO info (last_backlog, last_indexer, last_proper_search) VALUES (?,?,?)",
-                        [0, 0, str(when)])
+            myDB.action("INSERT INTO info (last_backlog, last_indexer, last_proper_search, last_downloadablesearch) VALUES (?,?,?,?)",
+                        [0, 0, str(when), 0])
         else:
             myDB.action("UPDATE info SET last_proper_search=" + str(when))
 

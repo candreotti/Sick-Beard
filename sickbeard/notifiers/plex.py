@@ -35,10 +35,10 @@ from xml.dom import minidom
 
 class PLEXNotifier(XBMCNotifier):
     def _notify_pmc(self, message, title="SickBeard", host=None, username=None, password=None, force=False):
-          # fill in omitted parameters
+        # fill in omitted parameters
         if not host:
             if sickbeard.PLEX_HOST:
-                host = sickbeard.PLEX_HOST # Use the default Plex host
+                host = sickbeard.PLEX_HOST  # Use the default Plex host
             else:
                 logger.log(u"No Plex host specified, check your settings", logger.DEBUG)
                 return False
@@ -52,7 +52,8 @@ class PLEXNotifier(XBMCNotifier):
             logger.log("Notification for Plex not enabled, skipping this notification", logger.DEBUG)
             return False
 
-        return self._notify_xbmc(message=message, title=title, host=host, username=username, password=password, force=True)
+        return self._notify_xbmc(message=message, title=title, host=host, username=username, password=password,
+                                 force=True)
 
     def notify_snatch(self, ep_name):
         if sickbeard.PLEX_NOTIFY_ONSNATCH:
@@ -70,6 +71,12 @@ class PLEXNotifier(XBMCNotifier):
         if sickbeard.PLEX_NOTIFY_ONSUBTITLEDOWNLOAD:
             self._notify_pmc(ep_name + ": " + lang, common.notifyStrings[common.NOTIFY_SUBTITLE_DOWNLOAD])
 
+    def notify_git_update(self, new_version="??"):
+        if sickbeard.USE_PLEX:
+            update_text = common.notifyStrings[common.NOTIFY_GIT_UPDATE_TEXT]
+            title = common.notifyStrings[common.NOTIFY_GIT_UPDATE]
+            self._notify_pmc(update_text + new_version, title)
+
     def test_notify(self, host, username, password):
         return self._notify_pmc("Testing Plex notifications from SickBeard", "Test Notification", host, username,
                                 password, force=True)
@@ -86,7 +93,7 @@ class PLEXNotifier(XBMCNotifier):
 
         if sickbeard.USE_PLEX and sickbeard.PLEX_UPDATE_LIBRARY:
             if not sickbeard.PLEX_SERVER_HOST:
-                logger.log(u"No Plex Server host specified, check your settings", logger.DEBUG)
+                logger.log(u"No Plex Media Server host specified, check your settings", logger.DEBUG)
                 return False
 
             logger.log(u"Updating library for the Plex Media Server host: " + sickbeard.PLEX_SERVER_HOST,

@@ -55,6 +55,12 @@ class TwitterNotifier:
     def notify_subtitle_download(self, ep_name, lang):
         if sickbeard.TWITTER_NOTIFY_ONSUBTITLEDOWNLOAD:
             self._notifyTwitter(common.notifyStrings[common.NOTIFY_SUBTITLE_DOWNLOAD] + ' ' + ep_name + ": " + lang)
+            
+    def notify_git_update(self, new_version = "??"):
+        if sickbeard.USE_TWITTER:
+            update_text=common.notifyStrings[common.NOTIFY_GIT_UPDATE_TEXT]
+            title=common.notifyStrings[common.NOTIFY_GIT_UPDATE]
+            self._notifyTwitter(title + " - " + update_text + new_version)
 
     def test_notify(self):
         return self._notifyTwitter("This is a test notification from Sick Beard", force=True)
@@ -65,12 +71,12 @@ class TwitterNotifier:
         oauth_consumer = oauth.Consumer(key=self.consumer_key, secret=self.consumer_secret)
         oauth_client = oauth.Client(oauth_consumer)
 
-        logger.log('Requesting temp token from Twitter')
+        logger.log('Requesting temp token from Twitter', logger.DEBUG)
 
         resp, content = oauth_client.request(self.REQUEST_TOKEN_URL, 'GET')
 
         if resp['status'] != '200':
-            logger.log('Invalid respond from Twitter requesting temp token: %s' % resp['status'])
+            logger.log('Invalid response from Twitter requesting temp token: %s' % resp['status'], logger.ERROR)
         else:
             request_token = dict(parse_qsl(content))
 
@@ -89,26 +95,26 @@ class TwitterNotifier:
         token = oauth.Token(request_token['oauth_token'], request_token['oauth_token_secret'])
         token.set_verifier(key)
 
-        logger.log('Generating and signing request for an access token using key ' + key)
+        logger.log('Generating and signing request for an access token using key ' + key, logger.DEBUG)
 
         signature_method_hmac_sha1 = oauth.SignatureMethod_HMAC_SHA1()  #@UnusedVariable
         oauth_consumer = oauth.Consumer(key=self.consumer_key, secret=self.consumer_secret)
-        logger.log('oauth_consumer: ' + str(oauth_consumer))
+        logger.log('oauth_consumer: ' + str(oauth_consumer), logger.DEBUG)
         oauth_client = oauth.Client(oauth_consumer, token)
-        logger.log('oauth_client: ' + str(oauth_client))
+        logger.log('oauth_client: ' + str(oauth_client), logger.DEBUG)
         resp, content = oauth_client.request(self.ACCESS_TOKEN_URL, method='POST', body='oauth_verifier=%s' % key)
-        logger.log('resp, content: ' + str(resp) + ',' + str(content))
+        logger.log('resp, content: ' + str(resp) + ',' + str(content), logger.DEBUG)
 
         access_token = dict(parse_qsl(content))
-        logger.log('access_token: ' + str(access_token))
+        logger.log('access_token: ' + str(access_token), logger.DEBUG)
 
-        logger.log('resp[status] = ' + str(resp['status']))
+        logger.log('resp[status] = ' + str(resp['status']), logger.DEBUG)
         if resp['status'] != '200':
             logger.log('The request for a token with did not succeed: ' + str(resp['status']), logger.ERROR)
             return False
         else:
-            logger.log('Your Twitter Access Token key: %s' % access_token['oauth_token'])
-            logger.log('Access Token secret: %s' % access_token['oauth_token_secret'])
+            logger.log('Your Twitter Access Token key: %s' % access_token['oauth_token'], logger.DEBUG)
+            logger.log('Access Token secret: %s' % access_token['oauth_token_secret'], logger.DEBUG)
             sickbeard.TWITTER_USERNAME = access_token['oauth_token']
             sickbeard.TWITTER_PASSWORD = access_token['oauth_token_secret']
             return True
@@ -121,7 +127,7 @@ class TwitterNotifier:
         access_token_key = sickbeard.TWITTER_USERNAME
         access_token_secret = sickbeard.TWITTER_PASSWORD
 
-        logger.log(u"Sending tweet: " + message)
+        logger.log(u"Sending tweet: " + message, logger.DEBUG)
 
         api = twitter.Api(username, password, access_token_key, access_token_secret)
 
@@ -140,5 +146,6 @@ class TwitterNotifier:
             return False
 
         return self._send_tweet(prefix + ": " + message)
+
 
 notifier = TwitterNotifier

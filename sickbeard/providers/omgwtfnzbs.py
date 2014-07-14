@@ -97,7 +97,7 @@ class OmgwtfnzbsProvider(generic.NZBProvider):
     def _get_title_and_url(self, item):
         return (item['release'], item['getnzb'])
 
-    def _doSearch(self, search, show=None, retention=0):
+    def _doSearch(self, search, epcount=0, retention=0):
 
         self._checkAuth()
 
@@ -142,8 +142,8 @@ class OmgwtfnzbsProvider(generic.NZBProvider):
 
                     title, url = self._get_title_and_url(item)
                     try:
-                        result_date = datetime.fromtimestamp(item['usenetage'])
-                    except TypeError:
+                        result_date = datetime.fromtimestamp(int(item['usenetage']))
+                    except:
                         result_date = None
 
                     if result_date:

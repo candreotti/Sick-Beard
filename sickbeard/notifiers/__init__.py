@@ -11,7 +11,7 @@
 # Sick Beard is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#  GNU General Public License for more details.
+# GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
 # along with Sick Beard.  If not, see <http://www.gnu.org/licenses/>.
@@ -42,7 +42,7 @@ import emailnotify
 
 from sickbeard.common import *
 
-# home theater
+# home theater / nas
 xbmc_notifier = xbmc.XBMCNotifier()
 plex_notifier = plex.PLEXNotifier()
 nmj_notifier = nmj.NMJNotifier()
@@ -60,7 +60,7 @@ boxcar2_notifier = boxcar2.Boxcar2Notifier()
 nma_notifier = nma.NMA_Notifier()
 pushalot_notifier = pushalot.PushalotNotifier()
 pushbullet_notifier = pushbullet.PushbulletNotifier()
-# online
+# social
 twitter_notifier = tweet.TwitterNotifier()
 trakt_notifier = trakt.TraktNotifier()
 email_notifier = emailnotify.EmailNotifier()
@@ -104,3 +104,8 @@ def notify_subtitle_download(ep_name, lang):
 def notify_snatch(ep_name):
     for n in notifiers:
         n.notify_snatch(ep_name)
+
+
+def notify_git_update(new_version=""):
+    for n in notifiers:
+        n.notify_git_update(new_version)

@@ -37,6 +37,9 @@ class TraktNotifier:
     
     def notify_subtitle_download(self, ep_name, lang):
         pass
+        
+    def notify_git_update(self, new_version):
+        pass
 
     def update_library(self, ep_obj):
         """
@@ -49,7 +52,7 @@ class TraktNotifier:
 
             # URL parameters
             data = {
-                'indexer_id': ep_obj.show.indexerid,
+                'tvdb_id': ep_obj.show.indexerid,
                 'title': ep_obj.show.name,
                 'year': ep_obj.show.startyear,
                 'episodes': [{
@@ -76,7 +79,7 @@ class TraktNotifier:
         """
 
         data = TraktCall("account/test/%API%", api, username, password, {})
-        if data["status"] == "success":
+        if data and data["status"] == "success":
             return True
 
     def _username(self):

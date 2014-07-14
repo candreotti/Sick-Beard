@@ -24,7 +24,7 @@ import time
 import sickbeard
 
 from sickbeard import logger
-from sickbeard.common import notifyStrings, NOTIFY_SNATCH, NOTIFY_DOWNLOAD, NOTIFY_DOWNLOADABLE, NOTIFY_SUBTITLE_DOWNLOAD
+from sickbeard.common import notifyStrings, NOTIFY_SNATCH, NOTIFY_DOWNLOAD, NOTIFY_DOWNLOADABLE, NOTIFY_SUBTITLE_DOWNLOAD, NOTIFY_GIT_UPDATE, NOTIFY_GIT_UPDATE_TEXT
 from sickbeard.exceptions import ex
 
 API_URL = "https://new.boxcar.io/api/notifications"
@@ -63,7 +63,7 @@ class Boxcar2Notifier:
             handle = urllib2.urlopen(req, data)
             handle.close()
 
-        except urllib2.URLError, e:
+        except urllib2.HTTPError, e:
             # if we get an error back that doesn't have an error code then who knows what's really happening
             if not hasattr(e, 'code'):
                 logger.log("Boxcar2 notification failed." + ex(e), logger.ERROR)
@@ -100,6 +100,12 @@ class Boxcar2Notifier:
     def notify_subtitle_download(self, ep_name, lang, title=notifyStrings[NOTIFY_SUBTITLE_DOWNLOAD]):
         if sickbeard.BOXCAR2_NOTIFY_ONSUBTITLEDOWNLOAD:
             self._notifyBoxcar2(title, ep_name + ": " + lang)
+            
+    def notify_git_update(self, new_version = "??"):
+        if sickbeard.USE_BOXCAR2:
+            update_text=notifyStrings[NOTIFY_GIT_UPDATE_TEXT]
+            title=notifyStrings[NOTIFY_GIT_UPDATE]
+            self._notifyBoxcar2(title, update_text + new_version)
 
     def _notifyBoxcar2(self, title, message, accesstoken=None):
         """

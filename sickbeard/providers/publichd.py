@@ -29,8 +29,7 @@ import datetime
 import sickbeard
 import generic
 
-from sickbeard.common import Quality, cpu_presets
-from sickbeard.name_parser.parser import NameParser, InvalidNameException
+from sickbeard.common import Quality
 from sickbeard import logger
 from sickbeard import tvcache
 from sickbeard import helpers
@@ -73,9 +72,9 @@ class PublicHDProvider(generic.TorrentProvider):
     def imageName(self):
         return 'publichd.png'
 
-    def getQuality(self, item):
+    def getQuality(self, item, anime=False):
 
-        quality = Quality.sceneQuality(item[0])
+        quality = Quality.sceneQuality(item[0], anime)
         return quality
 
     def _get_season_search_strings(self, ep_obj):
@@ -277,26 +276,28 @@ class PublicHDProvider(generic.TorrentProvider):
 
         results = []
 
-        sqlResults = db.DBConnection().select(
+        myDB = db.DBConnection()
+        sqlResults = myDB.select(
             'SELECT s.show_name, e.showid, e.season, e.episode, e.status, e.airdate FROM tv_episodes AS e' +
             ' INNER JOIN tv_shows AS s ON (e.showid = s.indexer_id)' +
             ' WHERE e.airdate >= ' + str(search_date.toordinal()) +
             ' AND (e.status IN (' + ','.join([str(x) for x in Quality.DOWNLOADED]) + ')' +
             ' OR (e.status IN (' + ','.join([str(x) for x in Quality.SNATCHED]) + ')))'
         )
+
         if not sqlResults:
             return []
 
         for sqlshow in sqlResults:
-            self.show = curshow = helpers.findCertainShow(sickbeard.showList, int(sqlshow["showid"]))
-            if not self.show: continue
-            curEp = curshow.getEpisode(int(sqlshow["season"]), int(sqlshow["episode"]))
+            self.show = helpers.findCertainShow(sickbeard.showList, int(sqlshow["showid"]))
+            if self.show:
+                curEp = self.show.getEpisode(int(sqlshow["season"]), int(sqlshow["episode"]))
 
-            searchString = self._get_episode_search_strings(curEp, add_string='PROPER|REPACK')
+                searchString = self._get_episode_search_strings(curEp, add_string='PROPER|REPACK')
 
-            for item in self._doSearch(searchString[0]):
-                title, url = self._get_title_and_url(item)
-                results.append(classes.Proper(title, url, datetime.datetime.today()))
+                for item in self._doSearch(searchString[0]):
+                    title, url = self._get_title_and_url(item)
+                    results.append(classes.Proper(title, url, datetime.datetime.today()))
 
         return results
 
@@ -337,8 +338,12 @@ class PublicHDCache(tvcache.TVCache):
             if ci is not None:
                 ql.append(ci)
 
-        myDB = self._getDB()
-        myDB.mass_action(ql)
+
+
+        if ql:
+            myDB = self._getDB()
+            myDB.mass_action(ql)
+
 
     def _parseItem(self, item):
 

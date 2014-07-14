@@ -91,15 +91,20 @@ class SearchQueue(generic_queue.GenericQueue):
     def add_item(self, item):
 
         if isinstance(item, DailySearchQueueItem) and not self.is_in_queue(item.show, item.segment):
+            sickbeard.name_cache.buildNameCache()
             generic_queue.GenericQueue.add_item(self, item)
         # don't do duplicates
         elif isinstance(item, BacklogQueueItem) and not self.is_in_queue(item.show, item.segment):
+            sickbeard.name_cache.buildNameCache()
             generic_queue.GenericQueue.add_item(self, item)
         elif isinstance(item, ManualSearchQueueItem) and not self.is_in_queue(item.show, item.segment):
+            sickbeard.name_cache.buildNameCache()
             generic_queue.GenericQueue.add_item(self, item)
         elif isinstance(item, FailedQueueItem) and not self.is_in_queue(item.show, item.segment):
+            sickbeard.name_cache.buildNameCache()
             generic_queue.GenericQueue.add_item(self, item)
         elif isinstance(item, DownloadSearchQueueItem) and not self.is_in_queue(item.show, item.segment):
+            sickbeard.name_cache.buildNameCache()
             generic_queue.GenericQueue.add_item(self, item)
         else:
             logger.log(u"Not adding item, it's already in the queue", logger.DEBUG)
@@ -114,6 +119,9 @@ class DownloadSearchQueueItem(generic_queue.QueueItem):
         self.success = None
         self.show = show
         self.segment = segment
+
+    def __del__(self):
+        pass
 
     def execute(self):
         generic_queue.QueueItem.execute(self)
@@ -155,12 +163,14 @@ class DailySearchQueueItem(generic_queue.QueueItem):
         self.show = show
         self.segment = segment
 
+    def __del__(self):
+        pass
+
     def execute(self):
         generic_queue.QueueItem.execute(self)
 
-
         logger.log("Beginning daily search for [" + self.show.name + "]")
-        foundResults = search.searchForNeededEpisodes(self.segment)
+        foundResults = search.searchForNeededEpisodes(self.show, self.segment)
 
         # reset thread back to original name
         threading.currentThread().name = self.thread_name
@@ -191,6 +201,9 @@ class ManualSearchQueueItem(generic_queue.QueueItem):
         self.success = None
         self.show = show
         self.segment = segment
+
+    def __del__(self):
+        pass
 
     def execute(self):
         generic_queue.QueueItem.execute(self)
@@ -225,6 +238,7 @@ class ManualSearchQueueItem(generic_queue.QueueItem):
             self.success = False
         generic_queue.QueueItem.finish(self)
 
+
 class BacklogQueueItem(generic_queue.QueueItem):
     def __init__(self, show, segment):
         generic_queue.QueueItem.__init__(self, 'Backlog', BACKLOG_SEARCH)
@@ -234,11 +248,15 @@ class BacklogQueueItem(generic_queue.QueueItem):
         self.show = show
         self.segment = segment
 
+    def __del__(self):
+        pass
+
     def execute(self):
         generic_queue.QueueItem.execute(self)
 
         for season in self.segment:
-            sickbeard.searchBacklog.BacklogSearcher.currentSearchInfo = {'title': self.show.name + " Season " + str(season)}
+            sickbeard.searchBacklog.BacklogSearcher.currentSearchInfo = {
+            'title': self.show.name + " Season " + str(season)}
 
             wantedEps = self.segment[season]
 
@@ -266,6 +284,7 @@ class BacklogQueueItem(generic_queue.QueueItem):
 
         self.finish()
 
+
 class FailedQueueItem(generic_queue.QueueItem):
     def __init__(self, show, segment):
         generic_queue.QueueItem.__init__(self, 'Retry', FAILED_SEARCH)
@@ -275,39 +294,43 @@ class FailedQueueItem(generic_queue.QueueItem):
         self.segment = segment
         self.success = None
 
+    def __del__(self):
+        pass
+
     def execute(self):
         generic_queue.QueueItem.execute(self)
 
         for season, episodes in self.segment.items():
             for epObj in episodes:
+                logger.log(u"Marking episode as bad: [" + epObj.prettyName() + "]")
+                failed_history.markFailed(epObj)
+
                 (release, provider) = failed_history.findRelease(epObj)
                 if release:
-                    logger.log(u"Marking release as bad: " + release)
-                    failed_history.markFailed(epObj)
                     failed_history.logFailed(release)
                     history.logFailed(epObj, release, provider)
-                    failed_history.revertEpisode(epObj)
 
-                    logger.log(
-                        "Beginning failed download search for [" + epObj.prettyName() + "]")
-                    try:
-                        searchResult = search.searchProviders(self.show, season, [epObj], "wantEP", True)
+                failed_history.revertEpisode(epObj)
+                logger.log("Beginning failed download search for [" + epObj.prettyName() + "]")
 
-                        # reset thread back to original name
-                        threading.currentThread().name = self.thread_name
+                try:
+                    searchResult = search.searchProviders(self.show, season, [epObj], "wantEP", True)
 
-                        if searchResult:
-                            for result in searchResult:
-                                # just use the first result for now
-                                logger.log(u"Downloading " + result.name + " from " + result.provider.name)
-                                search.snatchEpisode(result)
+                    # reset thread back to original name
+                    threading.currentThread().name = self.thread_name
 
-                                # give the CPU a break
-                                time.sleep(common.cpu_presets[sickbeard.CPU_PRESET])
+                    if searchResult:
+                        for result in searchResult:
+                            # just use the first result for now
+                            logger.log(u"Downloading " + result.name + " from " + result.provider.name)
+                            search.snatchEpisode(result)
 
-                        else:
-                            logger.log(u"No valid episode found to retry for [" + epObj.prettyName() + "]")
-                    except Exception, e:
-                        logger.log(traceback.format_exc(), logger.DEBUG)
+                            # give the CPU a break
+                            time.sleep(common.cpu_presets[sickbeard.CPU_PRESET])
+
+                    else:
+                        logger.log(u"No valid episode found to retry for [" + epObj.prettyName() + "]")
+                except Exception, e:
+                    logger.log(traceback.format_exc(), logger.DEBUG)
 
         self.finish()

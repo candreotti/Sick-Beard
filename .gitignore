@@ -9,7 +9,7 @@ failed.db*
 autoProcessTV/autoProcessTV.cfg
 server.crt
 server.key
-zoneinfo*.tar.gz
+restore/
 
 #  SB Test Related   #
 ######################

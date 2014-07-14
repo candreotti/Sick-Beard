@@ -176,7 +176,7 @@ class DownloadableSearcher:
         sqlResults = myDB.select("SELECT * FROM info")
 
         if len(sqlResults) == 0:
-            myDB.action("INSERT INTO info (last_downloadablesearch, last_backlog, last_indexer) VALUES (?,?,?)", [str(when), 0, 0])
+            myDB.action("INSERT INTO info (last_downloadablesearch, last_backlog, last_indexer, last_proper_search) VALUES (?,?,?, ?)", [str(when), 0, 0, 0])
         else:
             myDB.action("UPDATE info SET last_downloadablesearch=" + str(when))
 

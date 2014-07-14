@@ -26,7 +26,7 @@ from sickbeard import search_queue
 from sickbeard import failed_history
 from sickbeard import scene_exceptions
 
-from sickbeard.name_parser.parser import NameParser, InvalidNameException
+from sickbeard.name_parser.parser import NameParser, InvalidNameException, InvalidShowException
 
 
 class FailedProcessor(object):
@@ -44,6 +44,9 @@ class FailedProcessor(object):
 
         self.log = ""
 
+    def __del__(self):
+        pass
+
     def process(self):
         self._log(u"Failed download detected: (" + str(self.nzb_name) + ", " + str(self.dir_name) + ")")
 
@@ -52,13 +55,16 @@ class FailedProcessor(object):
             self._log(u"Warning: unable to find a valid release name.", logger.WARNING)
             raise exceptions.FailedProcessingFailed()
 
-        parser = NameParser(False)
 
         try:
+            parser = NameParser(False, convert=True)
             parsed = parser.parse(releaseName)
         except InvalidNameException:
             self._log(u"Error: release name is invalid: " + releaseName, logger.WARNING)
             raise exceptions.FailedProcessingFailed()
+        except InvalidShowException:
+            self._log(u"Error: unable to parse release name " + releaseName + " into a valid show", logger.WARNING)
+            raise exceptions.FailedProcessingFailed
 
         logger.log(u"name_parser info: ", logger.DEBUG)
         logger.log(u" - " + str(parsed.series_name), logger.DEBUG)
@@ -69,22 +75,19 @@ class FailedProcessor(object):
         logger.log(u" - " + str(parsed.air_date), logger.DEBUG)
         logger.log(u" - " + str(parsed.sports_event_date), logger.DEBUG)
 
-        self._show_obj = sickbeard.helpers.get_show_by_name(parsed.series_name)
-        if self._show_obj is None:
+        if parsed.show is None:
             self._log(
                 u"Could not create show object. Either the show hasn't been added to SickBeard, or it's still loading (if SB was restarted recently)",
                 logger.WARNING)
             raise exceptions.FailedProcessingFailed()
 
-        # scene -> indexer numbering
-        parsed = parsed.convert(self._show_obj)
-
         segment = {parsed.season_number:[]}
+
         for episode in parsed.episode_numbers:
-            epObj = self._show_obj.getEpisode(parsed.season_number, episode)
+            epObj = parsed.show.getEpisode(parsed.season_number, episode)
             segment[parsed.season_number].append(epObj)
 
-        cur_failed_queue_item = search_queue.FailedQueueItem(self._show_obj, segment)
+        cur_failed_queue_item = search_queue.FailedQueueItem(parsed.show, segment)
         sickbeard.searchQueueScheduler.action.add_item(cur_failed_queue_item)
 
         return True

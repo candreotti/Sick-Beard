@@ -67,12 +67,12 @@ class LibnotifyNotifier:
         try:
             import pynotify
         except ImportError:
-            logger.log(u"Unable to import pynotify. libnotify notifications won't work.")
+            logger.log(u"Unable to import pynotify. libnotify notifications won't work.", logger.ERROR)
             return False
         try:
             import gobject
         except ImportError:
-            logger.log(u"Unable to import gobject. We can't catch a GError in display.")
+            logger.log(u"Unable to import gobject. We can't catch a GError in display.", logger.ERROR)
             return False
         if not pynotify.init('Sick Beard'):
             logger.log(u"Initialization of pynotify failed. libnotify notifications won't work.")
@@ -96,6 +96,11 @@ class LibnotifyNotifier:
     def notify_subtitle_download(self, ep_name, lang):
         if sickbeard.LIBNOTIFY_NOTIFY_ONSUBTITLEDOWNLOAD:
             self._notify(common.notifyStrings[common.NOTIFY_SUBTITLE_DOWNLOAD], ep_name + ": " + lang)
+            
+    def notify_git_update(self, new_version = "??"):
+        if sickbeard.USE_LIBNOTIFY:
+            update_text=common.notifyStrings[common.NOTIFY_GIT_UPDATE_TEXT], title=common.notifyStrings[common.NOTIFY_GIT_UPDATE]
+            self._notify(title, update_text + new_version)
 
     def test_notify(self):
         return self._notify('Test notification', "This is a test notification from Sick Beard", force=True)

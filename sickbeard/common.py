@@ -51,12 +51,16 @@ NOTIFY_SNATCH = 1
 NOTIFY_DOWNLOAD = 2
 NOTIFY_SUBTITLE_DOWNLOAD = 3
 NOTIFY_DOWNLOADABLE = 4
+NOTIFY_GIT_UPDATE = 5
+NOTIFY_GIT_UPDATE_TEXT = 6
 
 notifyStrings = {}
 notifyStrings[NOTIFY_SNATCH] = "Download Started "
 notifyStrings[NOTIFY_DOWNLOAD] = "Download Finished"
 notifyStrings[NOTIFY_DOWNLOADABLE] = "Download Available"
 notifyStrings[NOTIFY_SUBTITLE_DOWNLOAD] = "Download Subtitle Finished"
+notifyStrings[NOTIFY_GIT_UPDATE] = "SickRage Updated"
+notifyStrings[NOTIFY_GIT_UPDATE_TEXT] = "SickRage Updated To Commit#: "
 
 ### Episode statuses
 UNKNOWN = -1  # should never happen
@@ -154,7 +158,7 @@ class Quality:
         return (sorted(anyQualities), sorted(bestQualities))
 
     @staticmethod
-    def nameQuality(name):
+    def nameQuality(name, anime=False):
         """
         Return The quality from an episode File renamed by Sickbeard
         If no quality is achieved it will try sceneQuality regex
@@ -166,8 +170,9 @@ class Quality:
         for x in sorted(Quality.qualityStrings.keys(), reverse=True):
             if x == Quality.UNKNOWN:
                 continue
+
             if x == Quality.NONE:  #Last chance
-                return Quality.sceneQuality(name)
+                return Quality.sceneQuality(name, anime)
 
             regex = '\W' + Quality.qualityStrings[x].replace(' ', '\W') + '\W'
             regex_match = re.search(regex, name, re.I)
@@ -175,7 +180,7 @@ class Quality:
                 return x
 
     @staticmethod
-    def sceneQuality(name):
+    def sceneQuality(name, anime=False):
         """
         Return The quality from the scene episode File 
         """
@@ -183,6 +188,30 @@ class Quality:
         name = os.path.basename(name)
 
         checkName = lambda list, func: func([re.search(x, name, re.I) for x in list])
+
+        if anime:
+            dvdOptions = checkName(["dvd", "dvdrip"], any)
+            blueRayOptions = checkName(["bluray", "blu-ray", "BD"], any)
+            sdOptions = checkName(["360p", "480p", "848x480", "XviD"], any)
+            hdOptions = checkName(["720p", "1280x720", "960x720"], any)
+            fullHD = checkName(["1080p", "1920x1080"], any)
+
+            if sdOptions and not blueRayOptions and not dvdOptions:
+                return Quality.SDTV
+            elif dvdOptions:
+                return Quality.SDDVD
+            elif hdOptions and not blueRayOptions and not fullHD:
+                return Quality.HDTV
+            elif fullHD and not blueRayOptions and not hdOptions:
+                return Quality.FULLHDTV
+            elif hdOptions and not blueRayOptions and not fullHD:
+                return Quality.HDWEBDL
+            elif blueRayOptions and hdOptions and not fullHD:
+                return Quality.HDBLURAY
+            elif blueRayOptions and fullHD and not hdOptions:
+                return Quality.FULLHDBLURAY
+            else:
+                return Quality.UNKNOWN
 
         if checkName(["(pdtv|hdtv|dsr|tvrip).(xvid|x264|h.?264)"], all) and not checkName(["(720|1080)[pi]"], all):
             return Quality.SDTV
@@ -197,13 +226,9 @@ class Quality:
             return Quality.RAWHDTV
         elif checkName(["1080p", "hdtv", "x264"], all):
             return Quality.FULLHDTV
-        elif checkName(["720p", "web.dl", "h.?264"], all) or checkName(["720p", "itunes", "h.?264"], all):
+        elif checkName(["720p", "web.dl|webrip"], all) or checkName(["720p", "itunes", "h.?264"], all):
             return Quality.HDWEBDL
-        elif checkName(["1080p", "web.dl", "h.?264"], all) or checkName(["1080p", "itunes", "h.?264"], all):
-            return Quality.FULLHDWEBDL
-        elif checkName(["720p", "webrip", "x264"], all):
-            return Quality.HDWEBDL
-        elif checkName(["1080p", "webrip", "x264"], all):
+        elif checkName(["1080p", "web.dl|webrip"], all) or checkName(["1080p", "itunes", "h.?264"], all):
             return Quality.FULLHDWEBDL
         elif checkName(["720p", "bluray|hddvd|b[r|d]rip", "x264"], all):
             return Quality.HDBLURAY

@@ -30,15 +30,11 @@ import gh_api as github
 import threading
 
 import sickbeard
-from sickbeard import helpers
+from sickbeard import helpers, notifiers
 from sickbeard import version, ui
 from sickbeard import logger
-from sickbeard import scene_exceptions
 from sickbeard.exceptions import ex
 from sickbeard import encodingKludge as ek
-from sickbeard import failed_history
-from sickbeard import network_timezones
-
 
 class CheckVersion():
     """
@@ -57,28 +53,18 @@ class CheckVersion():
         else:
             self.updater = None
 
+    def __del__(self):
+        pass
+
     def run(self, force=False):
-        updated = None
         if self.check_for_new_version():
             if sickbeard.AUTO_UPDATE:
                 logger.log(u"New update found for SickBeard, starting auto-updater ...")
-                updated = sickbeard.versionCheckScheduler.action.update()
-                if updated:
-                    logger.log(u"Update was successfull, restarting SickBeard ...")
-
-                    # do a soft restart
-                    threading.Timer(2, sickbeard.invoke_restart, [False]).start()
-
-        if not updated:
-            # refresh scene exceptions too
-            scene_exceptions.retrieve_exceptions()
-
-            # refresh network timezones
-            network_timezones.update_network_dict()
-
-            # sure, why not?
-            if sickbeard.USE_FAILED_DOWNLOADS:
-                failed_history.trimHistory()
+                ui.notifications.message('New update found for SickBeard, starting auto-updater')
+                if sickbeard.versionCheckScheduler.action.update():
+                    logger.log(u"Update was successful!")
+                    ui.notifications.message('Update was successful')
+                    sickbeard.events.put(sickbeard.events.SystemEvent.RESTART)
 
     def find_install_type(self):
         """
@@ -156,6 +142,8 @@ class WindowsUpdateManager(UpdateManager):
         self.version_url = 'https://raw.github.com/' + self.github_repo_user + '/' + self.github_repo + '/' + self.branch + '/updates.txt'
 
     def _find_installed_version(self):
+        version = ''
+
         try:
             version = sickbeard.version.SICKBEARD_VERSION
             return int(version[6:])
@@ -272,6 +260,9 @@ class WindowsUpdateManager(UpdateManager):
             new_update_path = os.path.join(sickbeard.PROG_DIR, u'updater.exe')
             logger.log(u"Copying new update.exe file from " + old_update_path + " to " + new_update_path)
             shutil.move(old_update_path, new_update_path)
+            
+            # Notify update successful
+            notifiers.notify_git_update(sickbeard.NEWEST_VERSION_STRING)
 
         except Exception, e:
             logger.log(u"Error while trying to update: " + ex(e), logger.ERROR)
@@ -293,7 +284,7 @@ class GitUpdateManager(UpdateManager):
         self._num_commits_ahead = 0
 
     def _git_error(self):
-        error_message = 'Unable to find your git executable - Shutdown SickBeard and EITHER <a href="http://code.google.com/p/sickbeard/wiki/AdvancedSettings" onclick="window.open(this.href); return false;">set git_path in your config.ini</a> OR delete your .git folder and run from source to enable updates.'
+        error_message = 'Unable to find your git executable - Shutdown SickBeard and EITHER set git_path in your config.ini OR delete your .git folder and run from source to enable updates.'
         sickbeard.NEWEST_VERSION_STRING = error_message
 
     def _find_working_git(self):
@@ -339,7 +330,7 @@ class GitUpdateManager(UpdateManager):
                     logger.log(u"Not using: " + cur_git, logger.DEBUG)
 
         # Still haven't found a working git
-        error_message = 'Unable to find your git executable - Shutdown SickBeard and EITHER <a href="http://code.google.com/p/sickbeard/wiki/AdvancedSettings" onclick="window.open(this.href); return false;">set git_path in your config.ini</a> OR delete your .git folder and run from source to enable updates.'
+        error_message = 'Unable to find your git executable - Shutdown SickBeard and EITHER set git_path in your config.ini OR delete your .git folder and run from source to enable updates.'
         sickbeard.NEWEST_VERSION_STRING = error_message
 
         return None
@@ -424,7 +415,6 @@ class GitUpdateManager(UpdateManager):
         commit hash. If there is a newer version it sets _num_commits_behind.
         """
 
-        self._newest_commit_hash = None
         self._num_commits_behind = 0
         self._num_commits_ahead = 0
 
@@ -522,6 +512,9 @@ class GitUpdateManager(UpdateManager):
         output, err, exit_status = self._run_git(self._git_path, 'pull origin ' + self.branch)  # @UnusedVariable
 
         if exit_status == 0:
+            # Notify update successful
+            if sickbeard.NOTIFY_ON_UPDATE:
+                notifiers.notify_git_update(self._newest_commit_hash[:10])
             return True
 
         return False
@@ -643,7 +636,7 @@ class SourceUpdateManager(UpdateManager):
         """
         Downloads the latest source tarball from github and installs it over the existing version.
         """
-        base_url = 'https://github.com/' + self.github_repo_user + '/' + self.github_repo
+        base_url = 'http://github.com/' + self.github_repo_user + '/' + self.github_repo
         tar_download_url = base_url + '/tarball/' + self.branch
         version_path = ek.ek(os.path.join, sickbeard.PROG_DIR, u'version.txt')
 
@@ -727,4 +720,7 @@ class SourceUpdateManager(UpdateManager):
             logger.log(u"Traceback: " + traceback.format_exc(), logger.DEBUG)
             return False
 
+        # Notify update successful
+        notifiers.notify_git_update(sickbeard.NEWEST_VERSION_STRING)
+        
         return True
