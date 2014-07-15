@@ -89,7 +89,7 @@ def authenticated(handler_class):
         def basicauth(handler, transforms, *args, **kwargs):
             def _request_basic_auth(handler):
                 handler.set_status(401)
-                handler.set_header('WWW-Authenticate', 'Basic realm="SickRage"')
+                handler.set_header('WWW-Authenticate', 'Basic realm="SickBeard"')
                 handler._transforms = []
                 handler.finish()
                 return False
@@ -132,7 +132,7 @@ class HTTPRedirect(Exception):
     """Exception raised when the request should be redirected."""
 
     def __init__(self, url, permanent=False, status=None):
-        self.url = urlparse.urljoin(sickbeard.WEB_ROOT, url)
+        self.url = url
         self.permanent = permanent
         self.status = status
         Exception.__init__(self, self.url, self.permanent, self.status)
@@ -143,8 +143,8 @@ class HTTPRedirect(Exception):
 
 
 def redirect(url, permanent=False, status=None):
-    raise HTTPRedirect(url, permanent, status)
-
+    assert url[0] == '/'
+    raise HTTPRedirect(sickbeard.WEB_ROOT + url, permanent, status)
 
 @authenticated
 class MainHandler(RequestHandler):
@@ -166,7 +166,7 @@ class MainHandler(RequestHandler):
         if status_code == 401:
             self.finish(self.http_error_401_handler())
         elif status_code == 404:
-            self.redirect(urlparse.urljoin(sickbeard.WEB_ROOT, '/home/'))
+            self.redirect(sickbeard.WEB_ROOT + '/home/')
         elif self.settings.get("debug") and "exc_info" in kwargs:
             exc_info = kwargs["exc_info"]
             trace_info = ''.join(["%s<br/>" % line for line in traceback.format_exception(*exc_info)])
@@ -423,8 +423,8 @@ class MainHandler(RequestHandler):
         # Create a iCal string
         ical = 'BEGIN:VCALENDAR\r\n'
         ical += 'VERSION:2.0\r\n'
-        ical += 'X-WR-CALNAME:SickRage\r\n'
-        ical += 'X-WR-CALDESC:SickRage\r\n'
+        ical += 'X-WR-CALNAME:SickBeard\r\n'
+        ical += 'X-WR-CALDESC:SickBeard\r\n'
         ical += 'PRODID://Sick-Beard Upcoming Episodes//\r\n'
 
         # Limit dates
@@ -1448,11 +1448,12 @@ class ConfigGeneral(MainHandler):
                     proxy_setting=None,
                     anon_redirect=None, git_path=None, calendar_unprotected=None,
                     fuzzy_dating=None, trim_zero=None, date_preset=None, date_preset_na=None, time_preset=None,
-                    indexer_timeout=None):
+                    indexer_timeout=None, play_videos=None):
 
         results = []
 
         # Misc
+        sickbeard.PLAY_VIDEOS = config.checkbox_to_value(play_videos)
         sickbeard.LAUNCH_BROWSER = config.checkbox_to_value(launch_browser)
         config.change_VERSION_NOTIFY(config.checkbox_to_value(version_notify))
         sickbeard.AUTO_UPDATE = config.checkbox_to_value(auto_update)
@@ -1537,7 +1538,7 @@ class ConfigBackupRestore(MainHandler):
 
         if backupDir:
             source = [os.path.join(sickbeard.DATA_DIR, 'sickbeard.db'), sickbeard.CONFIG_FILE]
-            target = os.path.join(backupDir, 'sickrage-' + time.strftime('%Y%m%d%H%M%S') + '.zip')
+            target = os.path.join(backupDir, 'sickbeard-' + time.strftime('%Y%m%d%H%M%S') + '.zip')
 
             if helpers.makeZip(source, target):
                 finalResult += "Successful backup to " + target
@@ -1562,7 +1563,7 @@ class ConfigBackupRestore(MainHandler):
 
             if helpers.extractZip(source, target_dir):
                 finalResult += "Successfully extracted restore files to " + target_dir
-                finalResult += "<br>Restart sickrage to complete the restore."
+                finalResult += "<br>Restart sickbeard to complete the restore."
             else:
                 finalResult += "Restore FAILED"
         else:
@@ -2881,26 +2882,33 @@ class NewHomeAddShows(MainHandler):
         if helpers.findCertainShow(sickbeard.showList, int(indexer_id)):
             return
 
-        root_dirs = sickbeard.ROOT_DIRS.split('|')
-        location = root_dirs[int(root_dirs[0]) + 1]
-
-        show_dir = ek.ek(os.path.join, location, helpers.sanitizeFileName(showName))
-        dir_exists = helpers.makeDir(show_dir)
-        if not dir_exists:
-            logger.log(u"Unable to create the folder " + show_dir + ", can't add the show", logger.ERROR)
-            return
+        if sickbeard.ROOT_DIRS:
+            root_dirs = sickbeard.ROOT_DIRS.split('|')
+            location = root_dirs[int(root_dirs[0]) + 1]
         else:
-            helpers.chmodAsParent(show_dir)
+            location = None
 
-        sickbeard.showQueueScheduler.action.addShow(1, int(indexer_id), show_dir,
-                                                    default_status=sickbeard.STATUS_DEFAULT,
-                                                    quality=sickbeard.QUALITY_DEFAULT,
-                                                    flatten_folders=sickbeard.FLATTEN_FOLDERS_DEFAULT,
-                                                    subtitles=sickbeard.SUBTITLES_DEFAULT,
-                                                    anime=sickbeard.ANIME_DEFAULT,
-                                                    scene=sickbeard.SCENE_DEFAULT)
+        if location:
+            show_dir = ek.ek(os.path.join, location, helpers.sanitizeFileName(showName))
+            dir_exists = helpers.makeDir(show_dir)
+            if not dir_exists:
+                logger.log(u"Unable to create the folder " + show_dir + ", can't add the show", logger.ERROR)
+                return
+            else:
+                helpers.chmodAsParent(show_dir)
 
-        ui.notifications.message('Show added', 'Adding the specified show into ' + show_dir)
+            sickbeard.showQueueScheduler.action.addShow(1, int(indexer_id), show_dir,
+                                                        default_status=sickbeard.STATUS_DEFAULT,
+                                                        quality=sickbeard.QUALITY_DEFAULT,
+                                                        flatten_folders=sickbeard.FLATTEN_FOLDERS_DEFAULT,
+                                                        subtitles=sickbeard.SUBTITLES_DEFAULT,
+                                                        anime=sickbeard.ANIME_DEFAULT,
+                                                        scene=sickbeard.SCENE_DEFAULT)
+
+            ui.notifications.message('Show added', 'Adding the specified show into ' + show_dir)
+        else:
+            logger.log(u"There was an error creating the show, no root directory setting found", logger.ERROR)
+            return
 
         # done adding show
         redirect('/home/')

@@ -19,13 +19,11 @@ import time
 import os
 
 import sickbeard
-
-from sickbeard import db
-
 from sickbeard import encodingKludge as ek
 from sickbeard import logger
 from sickbeard import helpers
 from sickbeard import search_queue
+from sickbeard import db
 from sickbeard.common import SNATCHED, SNATCHED_PROPER, DOWNLOADED, DOWNLOADABLE, SKIPPED, UNAIRED, IGNORED, ARCHIVED, WANTED, UNKNOWN, FAILED
 from common import Quality, qualityPresetStrings, statusStrings
 from lib.trakt import *
@@ -47,7 +45,7 @@ class TraktChecker():
     def run(self, force=False):
         # add shows from trakt.tv watchlist
         if sickbeard.USE_TRAKT:
-            self.todoWanted = []  #its about to all get re-added
+            self.todoWanted = []  # its about to all get re-added
             if len(sickbeard.ROOT_DIRS.split('|')) < 2:
                 logger.log(u"No default root directory", logger.ERROR)
                 return
@@ -69,7 +67,7 @@ class TraktChecker():
             self.addEpisodeToWatchList()
             self.addShowToWatchList()
 
-        # sync trakt.tv library with sickrage library
+        # sync trakt.tv library with sickbeard library
         if sickbeard.TRAKT_SYNC:
             self.syncLibrary()
 
@@ -111,7 +109,7 @@ class TraktChecker():
         """
 
         if self.findShow(show_obj.indexerid):
-           return
+            return
 
         # URL parameters
         data = {
@@ -403,19 +401,27 @@ class TraktChecker():
 
         logger.log(u"Adding show " + str(indexerid))
         root_dirs = sickbeard.ROOT_DIRS.split('|')
-        location = root_dirs[int(root_dirs[0]) + 1]
 
-        showPath = ek.ek(os.path.join, location, helpers.sanitizeFileName(name))
-        dir_exists = helpers.makeDir(showPath)
-        if not dir_exists:
-            logger.log(u"Unable to create the folder " + showPath + ", can't add the show", logger.ERROR)
-            return
+        try:
+            location = root_dirs[int(root_dirs[0]) + 1]
+        except:
+            location = None
+
+        if location:
+            showPath = ek.ek(os.path.join, location, helpers.sanitizeFileName(name))
+            dir_exists = helpers.makeDir(showPath)
+            if not dir_exists:
+                logger.log(u"Unable to create the folder " + showPath + ", can't add the show", logger.ERROR)
+                return
+            else:
+                helpers.chmodAsParent(showPath)
+
+            sickbeard.showQueueScheduler.action.addShow(1, int(indexerid), showPath, status,
+                                                        int(sickbeard.QUALITY_DEFAULT),
+                                                        int(sickbeard.FLATTEN_FOLDERS_DEFAULT))
         else:
-            helpers.chmodAsParent(showPath)
-
-        sickbeard.showQueueScheduler.action.addShow(1, int(indexerid), showPath, status,
-                                                    int(sickbeard.QUALITY_DEFAULT),
-                                                    int(sickbeard.FLATTEN_FOLDERS_DEFAULT))
+            logger.log(u"There was an error creating the show, no root directory setting found", logger.ERROR)
+            return
 
         if not self.show_in_watchlist(imdb_id):
             logger.log(u"Show: tvdb_id " + str(indexerid) + ", Title " +  str(name) + " should be added to watchlist", logger.DEBUG)

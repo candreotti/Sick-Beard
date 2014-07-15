@@ -22,7 +22,6 @@ __all__ = ['ezrss',
            'btn',
            'thepiratebay',
            'kat',
-           'publichd',
            'torrentleech',
            'scc',
            'tntvillage',
@@ -34,7 +33,9 @@ __all__ = ['ezrss',
            'nextgen',
            'speedcd',
            'nyaatorrents',
-           'fanzub'
+           'fanzub',
+           'torrentbytes',
+           'animezb'
 ]
 
 import sickbeard

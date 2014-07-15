@@ -59,8 +59,8 @@ notifyStrings[NOTIFY_SNATCH] = "Download Started "
 notifyStrings[NOTIFY_DOWNLOAD] = "Download Finished"
 notifyStrings[NOTIFY_DOWNLOADABLE] = "Download Available"
 notifyStrings[NOTIFY_SUBTITLE_DOWNLOAD] = "Download Subtitle Finished"
-notifyStrings[NOTIFY_GIT_UPDATE] = "SickRage Updated"
-notifyStrings[NOTIFY_GIT_UPDATE_TEXT] = "SickRage Updated To Commit#: "
+notifyStrings[NOTIFY_GIT_UPDATE] = "SickBeard Updated"
+notifyStrings[NOTIFY_GIT_UPDATE_TEXT] = "SickBeard Updated To Commit#: "
 
 ### Episode statuses
 UNKNOWN = -1  # should never happen

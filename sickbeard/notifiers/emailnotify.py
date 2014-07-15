@@ -54,6 +54,11 @@ class EmailNotifier:
         ep_name: The name of the episode that was snatched
         title: The title of the notification (optional)
         """
+
+        if not sickbeard.USE_EMAIL:
+            logger.log("Notification for Email not enabled, skipping this notification", logger.DEBUG)
+            return False
+
         if sickbeard.EMAIL_NOTIFY_ONSNATCH:
             show = self._parseEp(ep_name)
             to = self._generate_recepients(show)
@@ -87,6 +92,11 @@ class EmailNotifier:
         ep_name: The name of the episode that was downloaded
         title: The title of the notification (optional)
         """
+
+        if not sickbeard.USE_EMAIL:
+            logger.log("Notification for Email not enabled, skipping this notification", logger.DEBUG)
+            return False
+
         if sickbeard.EMAIL_NOTIFY_ONDOWNLOAD:
             show = self._parseEp(ep_name)
             to = self._generate_recepients(show)
@@ -120,6 +130,11 @@ class EmailNotifier:
         ep_name: The name of the episode that is Available
         title: The title of the notification (optional)
         """
+
+        if not sickbeard.USE_EMAIL:
+            logger.log("Notification for Email not enabled, skipping this notification", logger.DEBUG)
+            return False
+
         if sickbeard.EMAIL_NOTIFY_ONDOWNLOADABLE:
             show = self._parseEp(ep_name)
             to = self._generate_recepients(show)
@@ -149,6 +164,11 @@ class EmailNotifier:
         ep_name: The name of the episode that was downloaded
         lang: Subtitle language wanted
         """
+
+        if not sickbeard.USE_EMAIL:
+            logger.log("Notification for Email not enabled, skipping this notification", logger.DEBUG)
+            return False
+
         if sickbeard.EMAIL_NOTIFY_ONSUBTITLEDOWNLOAD:
             show = self._parseEp(ep_name)
             to = self._generate_recepients(show)
@@ -201,11 +221,6 @@ class EmailNotifier:
         return addrs
 
     def _sendmail(self, host, port, smtp_from, use_tls, user, pwd, to, msg, smtpDebug=False):
-
-        if not sickbeard.USE_EMAIL:
-            logger.log("Notification for Email not enabled, skipping this notification", logger.DEBUG)
-            return False
-
 
         logger.log('HOST: %s; PORT: %s; FROM: %s, TLS: %s, USER: %s, PWD: %s, TO: %s' % (
             host, port, smtp_from, use_tls, user, pwd, to), logger.DEBUG)
