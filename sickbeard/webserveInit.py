@@ -147,7 +147,7 @@ class SRWebServer(threading.Thread):
             protocol = "http"
             self.server = HTTPServer(self.app, no_keep_alive=True)
 
-        logger.log(u"Starting SickRage on " + protocol + "://" + str(self.options['host']) + ":" + str(
+        logger.log(u"Starting SickBeard on " + protocol + "://" + str(self.options['host']) + ":" + str(
             self.options['port']) + "/")
 
         try:
