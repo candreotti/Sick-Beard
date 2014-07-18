@@ -87,34 +87,30 @@ class DailySearcher():
                     ep.status = common.SKIPPED
                 else:
                     if ep.status == common.UNAIRED:
-                        logger.log(u"New episode " + ep.prettyName() + " airs today, setting status to WANTED")
-                        ep.status = common.WANTED
 
-                if ep.status == common.UNAIRED:
+                        myDB = db.DBConnection()
+                        sql_selection="SELECT show_name, tvdb_id, season, episode, paused FROM (SELECT * FROM tv_shows s,tv_episodes e WHERE s.tvdb_id = e.showid) T1 WHERE T1.paused = 0 and T1.episode_id IN (SELECT T2.episode_id FROM tv_episodes T2 WHERE T2.showid = T1.tvdb_id and T2.status in (?,?,?,?) and T2.season!=0 ORDER BY T2.season,T2.episode LIMIT 1) ORDER BY T1.show_name,season,episode"
+                        results = myDB.select(sql_selection, [common.SNATCHED, common.WANTED, common.SKIPPED, common.DOWNLOADABLE])
 
-                    myDB = db.DBConnection()
-                    sql_selection="SELECT show_name, tvdb_id, season, episode, paused FROM (SELECT * FROM tv_shows s,tv_episodes e WHERE s.tvdb_id = e.showid) T1 WHERE T1.paused = 0 and T1.episode_id IN (SELECT T2.episode_id FROM tv_episodes T2 WHERE T2.showid = T1.tvdb_id and T2.status in (?,?,?,?) and T2.season!=0 ORDER BY T2.season,T2.episode LIMIT 1) ORDER BY T1.show_name,season,episode"
-                    results = myDB.select(sql_selection, [common.SNATCHED, common.WANTED, common.SKIPPED, common.DOWNLOADABLE])
-
-                    show_sk = [show for show in results if show["tvdb_id"] == sqlEp["showid"]]
-		    if not show_sk or not sickbeard.USE_TRAKT:
-                        logger.log(u"New episode " + ep.prettyName() + " airs today, setting status to WANTED")
-			ep.status = common.WANTED
-                    else:
-                        sn_sk = show_sk[0]["season"]
-                        ep_sk = show_sk[0]["episode"]
-                        if (int(sn_sk)*100+int(ep_sk)) < (int(sqlEp["season"])*100+int(sqlEp["episode"])) or not show_sk:
-                            logger.log(u"New episode " + ep.prettyName() + " airs today, setting status to WANTED, due to trakt integration")
-                    	    ep.status = common.SKIPPED
-		        else:
+                        show_sk = [show for show in results if show["tvdb_id"] == sqlEp["showid"]]
+		        if not show_sk or not sickbeard.USE_TRAKT:
                             logger.log(u"New episode " + ep.prettyName() + " airs today, setting status to WANTED")
-                    	    ep.status = common.WANTED
+                            ep.status = common.WANTED
+                        else:
+                            sn_sk = show_sk[0]["season"]
+                            ep_sk = show_sk[0]["episode"]
+                            if (int(sn_sk)*100+int(ep_sk)) < (int(sqlEp["season"])*100+int(sqlEp["episode"])) or not show_sk:
+                                logger.log(u"New episode " + ep.prettyName() + " airs today, setting status to WANTED, due to trakt integration")
+                    	        ep.status = common.SKIPPED
+		            else:
+                                logger.log(u"New episode " + ep.prettyName() + " airs today, setting status to WANTED")
+                    	        ep.status = common.WANTED
 
-                if ep.status == common.WANTED:
-                    if show not in todaysEps:
-                        todaysEps[show] = [ep]
-                    else:
-                        todaysEps[show].append(ep)
+                    if ep.status == common.WANTED:
+                        if show not in todaysEps:
+                            todaysEps[show] = [ep]
+                        else:
+                            todaysEps[show].append(ep)
 
                 sql_l.append(ep.get_sql())
 
