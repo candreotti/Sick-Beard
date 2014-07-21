@@ -31,6 +31,8 @@ import threading
 import datetime
 import random
 import sys
+import operator
+from copy import deepcopy
 
 import sickbeard
 
@@ -2250,7 +2252,7 @@ class ConfigNotifications(MainHandler):
                           use_nmjv2=None, nmjv2_host=None, nmjv2_dbloc=None, nmjv2_database=None,
                           use_trakt=None, trakt_username=None, trakt_password=None, trakt_api=None,
                           trakt_remove_watchlist=None, trakt_remove_show_watchlist=None, trakt_use_watchlist=None, trakt_method_add=None,
-                          trakt_start_paused=None, trakt_num_ep=None, trakt_use_recommended=None, trakt_sync=None,
+                          trakt_start_paused=None, trakt_blacklist_name=None, trakt_num_ep=None, trakt_use_recommended=None, trakt_sync=None,
                           use_synologynotifier=None, synologynotifier_notify_onsnatch=None,
                           synologynotifier_notify_ondownload=None, synologynotifier_notify_ondownloadable=None, synologynotifier_notify_onsubtitledownload=None,
                           use_pytivo=None, pytivo_notify_onsnatch=None, pytivo_notify_ondownload=None, pytivo_notify_ondownloadable=None,
@@ -2371,6 +2373,7 @@ class ConfigNotifications(MainHandler):
         sickbeard.TRAKT_USE_WATCHLIST = config.checkbox_to_value(trakt_use_watchlist)
         sickbeard.TRAKT_METHOD_ADD = trakt_method_add
         sickbeard.TRAKT_START_PAUSED = config.checkbox_to_value(trakt_start_paused)
+        sickbeard.TRAKT_BLACKLIST_NAME = trakt_blacklist_name
         sickbeard.TRAKT_USE_RECOMMENDED = config.checkbox_to_value(trakt_use_recommended)
         sickbeard.TRAKT_SYNC = config.checkbox_to_value(trakt_sync)
         sickbeard.TRAKT_NUM_EP = config.to_int(trakt_num_ep)
@@ -2866,8 +2869,54 @@ class NewHomeAddShows(MainHandler):
         t.submenu = HomeMenu()
 
         t.trending_shows = TraktCall("shows/trending.json/%API%/", sickbeard.TRAKT_API_KEY)
+        t_trending_shows = deepcopy(t.trending_shows)
+
+        if sickbeard.USE_TRAKT:
+            library_shows = TraktCall("user/library/shows/all.json/%API%/" + sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_API, sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_PASSWORD)
+            if sickbeard.TRAKT_BLACKLIST_NAME is not None:
+                not_liked_show = TraktCall("user/list.json/%API%/" + sickbeard.TRAKT_USERNAME + "/" + sickbeard.TRAKT_BLACKLIST_NAME, sickbeard.TRAKT_API, sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_PASSWORD)
+            for tshow in t.trending_shows:
+                logger.log(u"Analysing Show " + tshow["title"] + " imdb_id " + str(tshow["imdb_id"]), logger.DEBUG)
+                newShow = helpers.findCertainShowFromIMDB(sickbeard.showList, tshow["imdb_id"])
+                if newShow is not None:
+                    logger.log(u"Show " + tshow["title"] + " is in sickbeard List, remove from trending", logger.DEBUG)
+                    t_trending_shows.remove(tshow)
+                else:
+                    if tshow["imdb_id"] in (show["imdb_id"] for show in library_shows):
+                        logger.log(u"Show " + tshow["title"] + " is in tracktv library, remove from trending", logger.DEBUG)
+                        t_trending_shows.remove(tshow)
+                    elif sickbeard.TRAKT_BLACKLIST_NAME != '':
+                        if tshow["imdb_id"] in (show["show"]["imdb_id"] for show in not_liked_show["items"] if show["type"] == "show"):	
+                            logger.log(u"Show " + tshow["title"] + " is in blacklist traktv List, remove from trending", logger.DEBUG)
+                            t_trending_shows.remove(tshow)
+                        else:
+                            logger.log(u"Show " + tshow["title"] + " is not in sickbeard List/traktv Library/blacklist traktv list, keep from trending", logger.DEBUG)
+                    else:  
+                        logger.log(u"Show " + tshow["title"] + " is not in sickbeard List/traktv Library, keep from trending", logger.DEBUG)
+
+        t.trending_shows = deepcopy(sorted(t_trending_shows, key=lambda x: x["ratings"]["loved"], reverse=True))
+
+	if sickbeard.TRAKT_BLACKLIST_NAME != '':
+            t.blacklist = True
+        else:
+	    t.blacklist = False
 
         return _munge(t)
+
+    def addShowToBlacklist(self, indexer_id):
+
+        # traktv URL parameters
+        data = {
+            'slug': sickbeard.TRAKT_BLACKLIST_NAME,
+            'items': [{
+                'type': "show",
+                'tvdb_id': indexer_id
+                }]
+            }
+
+        result=TraktCall("lists/items/add/%API%", sickbeard.TRAKT_API, sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_PASSWORD, data)
+ 
+        redirect('/home/addShows/trendingShows/')
 
     def existingShows(self, *args, **kwargs):
         """
@@ -2913,7 +2962,7 @@ class NewHomeAddShows(MainHandler):
         # done adding show
         redirect('/home/')
 
-    def addNewShow(self, whichSeries=None, indexerLang="en", rootDir=None, defaultStatus=None,
+    def addNewShow(self, whichSeries=None, indexerLang="it", rootDir=None, defaultStatus=None,
                    anyQualities=None, bestQualities=None, flatten_folders=None, subtitles=None,
                    fullShowPath=None, other_shows=None, skipShow=None, providedIndexer=None, anime=None,
                    scene=None):

@@ -1289,7 +1289,7 @@
                                     <span class="component-desc">Gets new shows from the trakt watchlist</span>
                                 </label>
                             </div>
-							<div id="content_trakt_use_watchlist">
+				<div id="content_trakt_use_watchlist">
 	                            <div class="field-pair">
 	                                <label class="nocheck clearfix">
 	                                    <span class="component-title">Watchlist Add Method:</span>
@@ -1331,7 +1331,17 @@
 	                                    <span class="component-desc">Starts shows grabbed from trakt watchlist paused</span>
 	                                </label>
 	                            </div>
-							</div>
+                                    <div class="field-pair">
+                                        <label class="nocheck clearfix">
+                                            <span class="component-title">Trakt BlackList name</span>
+                                            <input type="text" name="trakt_blacklist_name" id="trakt_blacklist_name" value="$sickbeard.TRAKT_BLACKLIST_NAME" size="35" />
+                                        </label>
+                                        <label class="nocheck clearfix">
+                                            <span class="component-title">&nbsp;</span>
+                                            <span class="component-desc">Name(slug) of List on Traktv for blacklisting show on tranding page</span>
+                                        </label>
+                                    </div>
+				</div>
                             <div class="testNotification" id="testTrakt-result">Click below to test.</div>
                             <input type="button" class="btn" value="Test Trakt" id="testTrakt" />
                             <input type="submit" class="btn config_submitter" value="Save Changes" />
