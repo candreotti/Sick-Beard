@@ -42,7 +42,11 @@ class InitialSchema(db.SchemaUpgrade):
                 ("CREATE TABLE lastUpdate (provider TEXT, time NUMERIC);",),
                 ("CREATE TABLE lastSearch (provider TEXT, time NUMERIC);",),
                 ("CREATE TABLE db_version (db_version INTEGER);",),
-                ("INSERT INTO db_version (db_version) VALUES (?)", 1),
+                ("CREATE TABLE scene_exceptions (exception_id INTEGER PRIMARY KEY, indexer_id INTEGER KEY, show_name TEXT, season NUMERIC, custom NUMERIC);",),
+                ("CREATE TABLE scene_names (indexer_id INTEGER, name TEXT);",),
+                ("CREATE TABLE network_timezones (network_name TEXT PRIMARY KEY, timezone TEXT);",),
+                ("CREATE TABLE scene_exceptions_refresh (list TEXT PRIMARY KEY, last_refreshed INTEGER);",),
+                ("INSERT INTO db_version (db_version) VALUES (6)",),
             ]
             for query in queries:
                 if len(query) == 1:

@@ -40,6 +40,9 @@
 
         <div class="traktShowTitleIcons">
             <a href="$sbRoot/home/addTraktShow?indexer_id=${cur_show["tvdb_id"]}&amp;showName=${cur_show["title"]}"><img alt="[add show]" height="16" width="16" src="$sbRoot/images/plus.png"></a>
+#if $blacklist
+            <a href="$sbRoot/home/addShowToBlacklist?indexer_id=${cur_show["tvdb_id"]}"><img alt="[remove show]" height="16" width="16" src="$sbRoot/images/minus.png"></a>
+#end if
         </div>
     </div>
 </td>
