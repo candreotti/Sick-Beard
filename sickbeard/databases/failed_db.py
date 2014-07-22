@@ -18,7 +18,15 @@
 
 from sickbeard import db
 from sickbeard.common import Quality
+from sickbeard import logger, helpers
 
+
+def backupDatabase(version):
+    logger.log(u"Backing up database before upgrade")
+    if not helpers.backupVersionedFile(db.dbFilename(), version):
+        logger.log_error_and_exit(u"Database backup failed, abort upgrading database")
+    else:
+        logger.log(u"Proceeding with upgrade")
 
 # Add new migrations at the bottom of the list; subclass the previous migration.
 class InitialSchema(db.SchemaUpgrade):
@@ -29,7 +37,7 @@ class InitialSchema(db.SchemaUpgrade):
         queries = [
             ('CREATE TABLE failed (release TEXT);',),
             ('CREATE TABLE db_version (db_version INTEGER);',),
-            ('INSERT INTO db_version (db_version) VALUES (?)', 1),
+            ('INSERT INTO db_version (db_version) VALUES (1)', ),
         ]
         for query in queries:
             if len(query) == 1:
@@ -69,3 +77,21 @@ class HistoryStatus(History):
         self.addColumn('history', 'showid', 'NUMERIC', '-1')
         self.addColumn('history', 'season', 'NUMERIC', '-1')
         self.addColumn('history', 'episode', 'NUMERIC', '-1')
+
+class HistoryShowId(History):
+    """Store episode status before snatch to revert to if necessary"""
+
+    def test(self):
+        return self.checkDBVersion() >= 2
+
+    def execute(self):
+        backupDatabase(self.checkDBVersion())
+
+        if not self.hasColumn("history", "showid"):
+            self.connection.action("ALTER TABLE history RENAME TO tmp_history")
+            self.connection.action("CREATE TABLE history (date NUMERIC, size NUMERIC, release TEXT, provider TEXT, showid NUMERIC, season NUMERIC, episode NUMERIC, old_status NUMERIC)")
+            self.connection.action("INSERT INTO history(date, size, release, provider, showid, season, episode, old_status) SELECT date, size, release, provider, showtvdbid, season, episode, old_status FROM tmp_history")
+            self.connection.action("DROP TABLE tmp_history")
+
+        self.incDBVersion()
+
