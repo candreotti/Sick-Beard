@@ -17,6 +17,7 @@
 # along with Sick Beard.  If not, see <http://www.gnu.org/licenses/>.
 import time
 import os
+import traceback
 
 import sickbeard
 from sickbeard import encodingKludge as ek
@@ -39,25 +40,26 @@ class TraktChecker():
         self.ShowProgress = []
         self.EpisodeWatched = []
 
-    def __del__(self):
-        pass
-
     def run(self, force=False):
-        # add shows from trakt.tv watchlist
-        if sickbeard.USE_TRAKT:
-            self.todoWanted = []  # its about to all get re-added
-            if len(sickbeard.ROOT_DIRS.split('|')) < 2:
-                logger.log(u"No default root directory", logger.ERROR)
-                return
 
-            if not self._getShowWatchlist():
-                return
-            if not self._getEpisodeWatchlist():
-                return
-            if not self._getShowProgress():
-                return
-            if not self._getEpisodeWatched():
-                return
+        if not sickbeard.USE_TRAKT:
+            return
+
+        try:
+            # add shows from trakt.tv watchlist
+            if sickbeard.TRAKT_USE_WATCHLIST:
+                self.todoWanted = []  # its about to all get re-added
+                if len(sickbeard.ROOT_DIRS.split('|')) < 2:
+                    logger.log(u"No default root directory", logger.ERROR)
+                    returnd
+                if not self._getShowWatchlist():
+                   return
+                if not self._getEpisodeWatchlist():
+                    return
+                if not self._getShowProgress():
+                    return
+                if not self._getEpisodeWatched():
+                    return
 
             self.removeShowFromWatchList()
             self.updateShows()
@@ -67,9 +69,12 @@ class TraktChecker():
             self.addEpisodeToWatchList()
             self.addShowToWatchList()
 
-        # sync trakt.tv library with sickbeard library
-        if sickbeard.TRAKT_SYNC:
-            self.syncLibrary()
+
+            # sync trakt.tv library with sickbeard library
+            if sickbeard.TRAKT_SYNC:
+                self.syncLibrary()
+        except Exception:
+            logger.log(traceback.format_exc(), logger.DEBUG)
 
     def findShow(self, indexerid):
         library = TraktCall("user/library/shows/all.json/%API%/" + sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_API,
@@ -83,8 +88,9 @@ class TraktChecker():
 
     def syncLibrary(self):
         logger.log(u"Syncing library to trakt.tv show library", logger.DEBUG)
-        for myShow in sickbeard.showList:
-            self.addShowToTraktLibrary(myShow)
+        if sickbeard.showList:
+            for myShow in sickbeard.showList:
+                self.addShowToTraktLibrary(myShow)
 
     def removeShowFromTraktLibrary(self, show_obj):
         if not self.findShow(show_obj.indexerid):
@@ -99,7 +105,8 @@ class TraktChecker():
 
         if data is not None:
             logger.log(u"Removing " + show_obj.name + " from trakt.tv library", logger.DEBUG)
-            TraktCall("show/unlibrary/%API%", sickbeard.TRAKT_API, sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_PASSWORD, data)
+            TraktCall("show/unlibrary/%API%", sickbeard.TRAKT_API, sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_PASSWORD,
+                      data)
 
     def addShowToTraktLibrary(self, show_obj):
         """
@@ -120,7 +127,8 @@ class TraktChecker():
 
         if data is not None:
             logger.log(u"Adding " + show_obj.name + " to trakt.tv library", logger.DEBUG)
-            TraktCall("show/library/%API%", sickbeard.TRAKT_API, sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_PASSWORD, data)
+            TraktCall("show/library/%API%", sickbeard.TRAKT_API, sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_PASSWORD,
+                      data)
 
     def _getEpisodeWatchlist(self):
         

@@ -22,7 +22,6 @@ import os
 
 import time
 import datetime
-import threading
 import sickbeard
 
 from sickbeard import db
@@ -34,9 +33,6 @@ from sickbeard.exceptions import MultipleShowObjectsException
 from sickbeard.exceptions import AuthException
 from name_parser.parser import NameParser, InvalidNameException, InvalidShowException
 from sickbeard.rssfeeds import RSSFeeds
-
-cache_lock = threading.Lock()
-
 
 class CacheDBConnection(db.DBConnection):
     def __init__(self, providerName):
@@ -72,25 +68,24 @@ class CacheDBConnection(db.DBConnection):
             if str(e) != "table lastUpdate already exists":
                 raise
 
-    def __del__(self):
-        pass
-
 class TVCache():
     def __init__(self, provider):
 
         self.provider = provider
         self.providerID = self.provider.getID()
+        self.providerDB = None
         self.minTime = 10
 
-    def __del__(self):
-        pass
-
     def _getDB(self):
-        return CacheDBConnection(self.providerID)
+        # init provider database if not done already
+        if not self.providerDB:
+            self.providerDB = CacheDBConnection(self.providerID)
+
+        return self.providerDB
 
     def _clearCache(self):
         if self.shouldClearCache():
-            logger.log(u"Clearing " + self.provider.name + " cache")
+            logger.log(u"Clearing items older than 1 week from " + self.provider.name + " cache")
 
             curDate = datetime.date.today() - datetime.timedelta(weeks=1)
 
@@ -129,7 +124,7 @@ class TVCache():
                     if ci is not None:
                         cl.append(ci)
 
-                if cl:
+                if len(cl) > 0:
                     myDB = self._getDB()
                     myDB.mass_action(cl)
             else:
@@ -142,12 +137,10 @@ class TVCache():
         return RSSFeeds(self.providerID).getFeed(url, post_data, request_headers)
 
     def _translateTitle(self, title):
-        return title.replace(' ', '.')
-
+        return u'' + title.replace(' ', '.')
 
     def _translateLinkURL(self, url):
         return url.replace('&amp;', '&')
-
 
     def _parseItem(self, item):
         title = item.title
@@ -235,24 +228,33 @@ class TVCache():
 
         return True
 
-    def _addCacheEntry(self, name, url, quality=None):
+    def _addCacheEntry(self, name, url, parse_result=None, indexer_id=0):
 
-        try:
-            myParser = NameParser(convert=True)
-            parse_result = myParser.parse(name)
-        except InvalidNameException:
-            logger.log(u"Unable to parse the filename " + name + " into a valid episode", logger.DEBUG)
-            return None
-        except InvalidShowException:
-            logger.log(u"Unable to parse the filename " + name + " into a valid show", logger.DEBUG)
-            return None
+        # check if we passed in a parsed result or should we try and create one
+        if not parse_result:
 
-        if not parse_result or not parse_result.series_name:
-            return None
+            # create showObj from indexer_id if available
+            showObj=None
+            if indexer_id:
+                showObj = helpers.findCertainShow(sickbeard.showList, indexer_id)
 
+            try:
+                myParser = NameParser(showObj=showObj, convert=True)
+                parse_result = myParser.parse(name)
+            except InvalidNameException:
+                logger.log(u"Unable to parse the filename " + name + " into a valid episode", logger.DEBUG)
+                return None
+            except InvalidShowException:
+                logger.log(u"Unable to parse the filename " + name + " into a valid show", logger.DEBUG)
+                return None
+
+            if not parse_result or not parse_result.series_name:
+                return None
+
+        # if we made it this far then lets add the parsed result to cache for usager later on
         season = episodes = None
-        if parse_result.air_by_date or parse_result.sports:
-            airdate = parse_result.air_date.toordinal() if parse_result.air_date else parse_result.sports_event_date.toordinal()
+        if parse_result.is_air_by_date or parse_result.is_sports:
+            airdate = parse_result.air_date.toordinal() if parse_result.air_date else parse_result.sports_air_date.toordinal()
 
             myDB = db.DBConnection()
             sql_results = myDB.select(
@@ -262,7 +264,7 @@ class TVCache():
                 season = int(sql_results[0]["season"])
                 episodes = [int(sql_results[0]["episode"])]
         else:
-            season = parse_result.season_number if parse_result.season_number != None else 1
+            season = parse_result.season_number if parse_result.season_number else 1
             episodes = parse_result.episode_numbers
 
         if season and episodes:
@@ -273,11 +275,10 @@ class TVCache():
             curTimestamp = int(time.mktime(datetime.datetime.today().timetuple()))
 
             # get quality of release
-            if quality is None:
-                quality = Quality.sceneQuality(name, parse_result.is_anime)
+            quality = parse_result.quality
 
             if not isinstance(name, unicode):
-                name = unicode(name, 'utf-8')
+                name = unicode(name, 'utf-8', 'replace')
 
             # get release group
             release_group = parse_result.release_group
@@ -352,35 +353,34 @@ class TVCache():
                     # if the show says we want that episode then add it to the list
                     if not showObj.wantEpisode(curSeason, curEp, curQuality, manualSearch) and not showObj.lookIfDownloadable(curSeason, curEp, curQuality, manualSearch):
                         logger.log(u"Skipping " + curResult["name"] + " because we don't want an episode that's " + Quality.qualityStrings[curQuality], logger.DEBUG)
+                        continue
 
+                    # build a result object
+                    title = curResult["name"]
+                    url = curResult["url"]
+
+                    if episode:
+                        epObj = episode
                     else:
+                        epObj = showObj.getEpisode(curSeason, curEp)
 
-                        if episode:
-                            epObj = episode
-                        else:
-                            epObj = showObj.getEpisode(curSeason, curEp)
+                    logger.log(u"Found result " + title + " at " + url)
 
-                        # build a result object
-                        title = curResult["name"]
-                        url = curResult["url"]
+                    result = self.provider.getResult([epObj])
+                    result.show = showObj
+                    result.url = url
+                    result.name = title
+                    result.quality = curQuality
+                    result.release_group = curReleaseGroup
+                    result.content = self.provider.getURL(url) \
+                        if self.provider.providerType == sickbeard.providers.generic.GenericProvider.TORRENT \
+                           and not url.startswith('magnet') else None
 
-                        logger.log(u"Found result " + title + " at " + url)
-
-                        result = self.provider.getResult([epObj])
-                        result.show = showObj
-                        result.url = url
-                        result.name = title
-                        result.quality = curQuality
-                        result.release_group = curReleaseGroup
-                        result.content = self.provider.getURL(url) \
-                            if self.provider.providerType == sickbeard.providers.generic.GenericProvider.TORRENT \
-                               and not url.startswith('magnet') else None
-    
-                        # add it to the list
-                        if epObj not in neededEps:
-                            neededEps[epObj] = [result]
-                        else:
-                            neededEps[epObj].append(result)
+                    # add it to the list
+                    if epObj not in neededEps:
+                        neededEps[epObj] = [result]
+                    else:
+                        neededEps[epObj].append(result)
     
         # datetime stamp this search so cache gets cleared
         self.setLastSearch()

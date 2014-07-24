@@ -174,7 +174,7 @@ def snatchEpisode(result, endStatus=SNATCHED):
         if curEpObj.status not in Quality.DOWNLOADED:
             notifiers.notify_snatch(curEpObj._format_pattern('%SN - %Sx%0E - %EN - %QN'))
 
-    if sql_l:
+    if len(sql_l) > 0:
         myDB = db.DBConnection()
         myDB.mass_action(sql_l)
 
@@ -206,6 +206,7 @@ def downloadableEpisode(result, endStatus=DOWNLOADABLE):
 
     return True
 
+
 def filter_release_name(name, filter_words):
     """
     Filters out results based on filter_words
@@ -231,7 +232,8 @@ def pickBestResult(results, show, quality_list=None):
     # build the black And white list
     bwl = None
     if show:
-        bwl = BlackAndWhiteList(show.indexerid)
+        if show.is_anime:
+            bwl = BlackAndWhiteList(show.indexerid)
     else:
         logger.log("Could not create black and white list no show was given", logger.DEBUG)
 
@@ -297,7 +299,9 @@ def isFinalResult(result):
 
     show_obj = result.episodes[0].show
 
-    bwl = BlackAndWhiteList(show_obj.indexerid)
+    bwl = None
+    if show_obj.is_anime:
+        bwl = BlackAndWhiteList(show_obj.indexerid)
 
     any_qualities, best_qualities = Quality.splitQuality(show_obj.quality)
 
@@ -306,7 +310,7 @@ def isFinalResult(result):
         return False
 
     # if it does not match the shows black and white list its no good
-    elif not bwl.is_valid(result):
+    elif bwl and not bwl.is_valid(result):
         return False
 
     # if there's no redownload that's higher (above) and this is the highest initial download then we're good
@@ -366,22 +370,24 @@ def filterSearchResults(show, season, results):
 
 def searchForNeededEpisodes(show, episodes):
     foundResults = {}
-
     didSearch = False
 
-    # ask all providers for any episodes it finds
-    origThreadName = threading.currentThread().name
     providers = [x for x in sickbeard.providers.sortedProviderList() if x.isActive() and not x.backlog_only]
+    if not len(providers):
+        logger.log(u"No NZB/Torrent providers found or enabled in the sickrage config. Please check your settings.",
+                   logger.ERROR)
+        return
+
+    origThreadName = threading.currentThread().name
     for curProviderCount, curProvider in enumerate(providers):
         if curProvider.anime_only and not show.is_anime:
             logger.log(u"" + str(show.name) + " is not an anime skiping ...")
             continue
 
-        threading.currentThread().name = origThreadName + " :: [" + curProvider.name + "]"
-
         try:
-            logger.log(u"Searching RSS cache ...")
+            threading.currentThread().name = origThreadName + " :: [" + curProvider.name + "]"
             curFoundResults = curProvider.searchRSS(episodes)
+            threading.currentThread().name = origThreadName
         except exceptions.AuthException, e:
             logger.log(u"Authentication error: " + ex(e), logger.ERROR)
             if curProviderCount != len(providers):
@@ -429,6 +435,12 @@ def searchProviders(show, season, episodes, type="wantEP", manualSearch=False):
     foundResults = {}
     finalResults = []
 
+    providers = [x for x in sickbeard.providers.sortedProviderList() if x.isActive()]
+    if not len(providers):
+        logger.log(u"No NZB/Torrent providers found or enabled in the sickrage config. Please check your settings.",
+                   logger.ERROR)
+        return
+
     # check if we want to search for season packs instead of just season/episode
     seasonSearch = False
     if not manualSearch:
@@ -436,28 +448,20 @@ def searchProviders(show, season, episodes, type="wantEP", manualSearch=False):
         if len(seasonEps) == len(episodes):
             seasonSearch = True
 
-    providers = [x for x in sickbeard.providers.sortedProviderList() if x.isActive()]
-
-    if not len(providers):
-        logger.log(u"No NZB/Torrent providers found or enabled in the sickbeard config. Please check your settings.",
-                   logger.ERROR)
-        return
-
     origThreadName = threading.currentThread().name
     for providerNum, provider in enumerate(providers):
         if provider.anime_only and not show.is_anime:
             logger.log(u"" + str(show.name) + " is not an anime skiping ...")
             continue
 
-        threading.currentThread().name = origThreadName + " :: [" + provider.name + "]"
-        foundResults.setdefault(provider.name, {})
+        foundResults[provider.name] = {}
         searchCount = 0
 
         search_mode = 'eponly'
         if seasonSearch and provider.search_mode == 'sponly':
             search_mode = provider.search_mode
 
-        while (True):
+        while(True):
             searchCount += 1
 
             if search_mode == 'sponly':
@@ -466,6 +470,7 @@ def searchProviders(show, season, episodes, type="wantEP", manualSearch=False):
                 logger.log(u"Searching for episodes we need from " + show.name + " Season " + str(season))
 
             try:
+                threading.currentThread().name = origThreadName + " :: [" + provider.name + "]"
                 if type == "wantEP":
                     searchResults = provider.findSearchResults(show, season, episodes, search_mode, manualSearch)
                 elif type == "skipEp":
@@ -473,7 +478,7 @@ def searchProviders(show, season, episodes, type="wantEP", manualSearch=False):
                 else:
                     logger.log(u"Invalid option name - this is a coding error, report it please", logger.ERROR)
                     return None
-                
+                threading.currentThread().name = origThreadName
             except exceptions.AuthException, e:
                 logger.log(u"Authentication error: " + ex(e), logger.ERROR)
                 break

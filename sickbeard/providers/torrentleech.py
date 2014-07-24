@@ -20,7 +20,6 @@ import re
 import traceback
 import datetime
 import urlparse
-import time
 import sickbeard
 import generic
 from sickbeard.common import Quality, cpu_presets
@@ -35,7 +34,7 @@ from sickbeard.exceptions import ex
 from sickbeard import clients
 from lib import requests
 from lib.requests import exceptions
-from bs4 import BeautifulSoup
+from sickbeard.bs4_parser import BS4Parser
 from lib.unidecode import unidecode
 from sickbeard.helpers import sanitizeSceneName
 
@@ -150,7 +149,7 @@ class TorrentLeechProvider(generic.TorrentProvider):
 
         return [search_string]
 
-    def _doSearch(self, search_params, epcount=0, age=0):
+    def _doSearch(self, search_params, search_mode='eponly', epcount=0, age=0):
 
         results = []
         items = {'Season': [], 'Episode': [], 'RSS': []}
@@ -173,41 +172,40 @@ class TorrentLeechProvider(generic.TorrentProvider):
                     continue
 
                 try:
-                    html = BeautifulSoup(data, features=["html5lib", "permissive"])
+                    with BS4Parser(data, features=["html5lib", "permissive"]) as html:
+                        torrent_table = html.find('table', attrs={'id': 'torrenttable'})
+                        torrent_rows = torrent_table.find_all('tr') if torrent_table else []
 
-                    torrent_table = html.find('table', attrs={'id': 'torrenttable'})
-                    torrent_rows = torrent_table.find_all('tr') if torrent_table else []
-
-                    #Continue only if one Release is found                    
-                    if len(torrent_rows) < 2:
-                        logger.log(u"The Data returned from " + self.name + " do not contains any torrent",
-                                   logger.DEBUG)
-                        continue
-
-                    for result in torrent_table.find_all('tr')[1:]:
-
-                        try:
-                            link = result.find('td', attrs={'class': 'name'}).find('a')
-                            url = result.find('td', attrs={'class': 'quickdownload'}).find('a')
-                            title = link.string
-                            download_url = self.urls['download'] % url['href']
-                            id = int(link['href'].replace('/torrent/', ''))
-                            seeders = int(result.find('td', attrs={'class': 'seeders'}).string)
-                            leechers = int(result.find('td', attrs={'class': 'leechers'}).string)
-                        except (AttributeError, TypeError):
+                        #Continue only if one Release is found
+                        if len(torrent_rows) < 2:
+                            logger.log(u"The Data returned from " + self.name + " do not contains any torrent",
+                                       logger.DEBUG)
                             continue
 
-                        #Filter unseeded torrent
-                        if mode != 'RSS' and (seeders == 0 or seeders < self.minseed or leechers < self.minleech):
-                            continue
+                        for result in torrent_table.find_all('tr')[1:]:
 
-                        if not title or not download_url:
-                            continue
+                            try:
+                                link = result.find('td', attrs={'class': 'name'}).find('a')
+                                url = result.find('td', attrs={'class': 'quickdownload'}).find('a')
+                                title = link.string
+                                download_url = self.urls['download'] % url['href']
+                                id = int(link['href'].replace('/torrent/', ''))
+                                seeders = int(result.find('td', attrs={'class': 'seeders'}).string)
+                                leechers = int(result.find('td', attrs={'class': 'leechers'}).string)
+                            except (AttributeError, TypeError):
+                                continue
 
-                        item = title, download_url, id, seeders, leechers
-                        logger.log(u"Found result: " + title + "(" + searchURL + ")", logger.DEBUG)
+                            #Filter unseeded torrent
+                            if mode != 'RSS' and (seeders < self.minseed or leechers < self.minleech):
+                                continue
 
-                        items[mode].append(item)
+                            if not title or not download_url:
+                                continue
+
+                            item = title, download_url, id, seeders, leechers
+                            logger.log(u"Found result: " + title + "(" + searchURL + ")", logger.DEBUG)
+
+                            items[mode].append(item)
 
                 except Exception, e:
                     logger.log(u"Failed parsing " + self.name + " Traceback: " + traceback.format_exc(), logger.ERROR)
@@ -222,6 +220,10 @@ class TorrentLeechProvider(generic.TorrentProvider):
     def _get_title_and_url(self, item):
 
         title, url, id, seeders, leechers = item
+
+        if title:
+            title = u'' + title
+            title = title.replace(' ', '.')
 
         if url:
             url = str(url).replace('&amp;', '&')
@@ -279,7 +281,7 @@ class TorrentLeechProvider(generic.TorrentProvider):
 
                 for item in self._doSearch(searchString[0]):
                     title, url = self._get_title_and_url(item)
-                    results.append(classes.Proper(title, url, datetime.datetime.today()))
+                    results.append(classes.Proper(title, url, datetime.datetime.today(), self.show))
 
         return results
 
@@ -298,7 +300,6 @@ class TorrentLeechCache(tvcache.TVCache):
     def updateCache(self):
 
         # delete anything older then 7 days
-        logger.log(u"Clearing " + self.provider.name + " cache")
         self._clearCache()
 
         if not self.shouldUpdate():
@@ -322,7 +323,7 @@ class TorrentLeechCache(tvcache.TVCache):
 
 
 
-        if cl:
+        if len(cl) > 0:
             myDB = self._getDB()
             myDB.mass_action(cl)
 

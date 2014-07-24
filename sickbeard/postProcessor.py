@@ -11,7 +11,7 @@
 # Sick Beard is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#  GNU General Public License for more details.
+# GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
 # along with Sick Beard.  If not, see <http://www.gnu.org/licenses/>.
@@ -44,6 +44,7 @@ from sickbeard.name_parser.parser import NameParser, InvalidNameException, Inval
 
 from lib import adba
 
+
 class PostProcessor(object):
     """
     A class which will process a media file according to the post processing settings in the config.
@@ -55,10 +56,6 @@ class PostProcessor(object):
     DOESNT_EXIST = 4
 
     IGNORED_FILESTRINGS = ["/.AppleDouble/", ".DS_Store"]
-
-    NZB_NAME = 1
-    FOLDER_NAME = 2
-    FILE_NAME = 3
 
     def __init__(self, file_path, nzb_name=None, process_method=None, is_priority=None):
         """
@@ -85,19 +82,16 @@ class PostProcessor(object):
         self.process_method = process_method if process_method else sickbeard.PROCESS_METHOD
 
         self.in_history = False
+
         self.release_group = None
+
+        self.release_name = None
+
         self.is_proper = False
 
         self.is_priority = is_priority
 
-        self.good_results = {self.NZB_NAME: False,
-                             self.FOLDER_NAME: False,
-                             self.FILE_NAME: False}
-
         self.log = ''
-
-    def __del__(self):
-        pass
 
     def _log(self, message, level=logger.MESSAGE):
         """
@@ -184,7 +178,7 @@ class PostProcessor(object):
             if subtitles_only and not associated_file_path[len(associated_file_path) - 3:] in common.subtitleExtensions:
                 continue
 
-            #Exclude .rar files from associated list
+            # Exclude .rar files from associated list
             if re.search('(^.+\.(rar|r\d+)$)', associated_file_path):
                 continue
 
@@ -217,7 +211,7 @@ class PostProcessor(object):
         for cur_file in file_list:
             if ek.ek(os.path.isfile, cur_file):
                 self._log(u"Deleting file " + cur_file, logger.DEBUG)
-                #check first the read-only attribute
+                # check first the read-only attribute
                 file_attribute = ek.ek(os.stat, cur_file)[0]
                 if (not file_attribute & stat.S_IWRITE):
                     # File is read-only, so make it writeable
@@ -416,15 +410,14 @@ class PostProcessor(object):
             if len(sql_results) == 0:
                 continue
 
-            show = helpers.findCertainShow(sickbeard.showList, int(sql_results[0]["showid"]))
-            if not show:
-                continue
-
+            indexer_id = int(sql_results[0]["showid"])
             season = int(sql_results[0]["season"])
             quality = int(sql_results[0]["quality"])
 
             if quality == common.Quality.UNKNOWN:
                 quality = None
+
+            show = helpers.findCertainShow(sickbeard.showList, indexer_id)
 
             self.in_history = True
             to_return = (show, season, [], quality)
@@ -440,27 +433,24 @@ class PostProcessor(object):
 
         # remember whether it's a proper
         if parse_result.extra_info:
-            self.is_proper = re.search('(^|[\. _-])(proper|repack)([\. _-]|$)', parse_result.extra_info,re.I) != None
+            self.is_proper = re.search('(^|[\. _-])(proper|repack)([\. _-]|$)', parse_result.extra_info, re.I) != None
 
         # if the result is complete then remember that for later
-        if parse_result.series_name and parse_result.season_number != None and parse_result.episode_numbers and parse_result.release_group:
-            test_name = ek.ek(os.path.basename, parse_result.original_name)
-            if test_name == self.nzb_name:
-                self.good_results[self.NZB_NAME] = True
-            elif test_name == self.folder_name:
-                self.good_results[self.FOLDER_NAME] = True
-            elif test_name == self.file_name:
-                self.good_results[self.FILE_NAME] = True
-            else:
-                logger.log(u"Nothing was good, found " + repr(test_name) + " and wanted either " + repr(
-                    self.nzb_name) + ", " + repr(self.folder_name) + ", or " + repr(self.file_name))
+        # if the result is complete then set release name
+        if parse_result.series_name and ((parse_result.season_number is not None and parse_result.episode_numbers)
+                                         or parse_result.air_date) and parse_result.release_group:
+
+            if not self.release_name:
+                self.release_name = helpers.remove_extension(ek.ek(os.path.basename, parse_result.original_name))
+
         else:
-            logger.log(u"Parse result not sufficient(all following have to be set). Will not save release name",
+            logger.log(u"Parse result not sufficient (all following have to be set). will not save release name",
                        logger.DEBUG)
-            logger.log("Parse result(series_name): " + str(parse_result.series_name), logger.DEBUG)
-            logger.log("Parse result(season_number): " + str(parse_result.season_number), logger.DEBUG)
-            logger.log("Parse result(episode_numbers): " + str(parse_result.episode_numbers), logger.DEBUG)
-            logger.log("Parse result(release_group): " + str(parse_result.release_group), logger.DEBUG)
+            logger.log(u"Parse result(series_name): " + str(parse_result.series_name), logger.DEBUG)
+            logger.log(u"Parse result(season_number): " + str(parse_result.season_number), logger.DEBUG)
+            logger.log(u"Parse result(episode_numbers): " + str(parse_result.episode_numbers), logger.DEBUG)
+            logger.log(u" or Parse result(air_date): " + str(parse_result.air_date), logger.DEBUG)
+            logger.log(u"Parse result(release_group): " + str(parse_result.release_group), logger.DEBUG)
 
     def _analyze_name(self, name, file=True):
         """
@@ -479,6 +469,8 @@ class PostProcessor(object):
         if not name:
             return to_return
 
+        name = helpers.remove_non_release_groups(helpers.remove_extension(name))
+
         # parse the name to break it into show name, season, and episode
         np = NameParser(file, useIndexers=True, convert=True)
         parse_result = np.parse(name)
@@ -486,12 +478,12 @@ class PostProcessor(object):
         # show object
         show = parse_result.show
 
-        if parse_result.air_by_date:
+        if parse_result.is_air_by_date:
             season = -1
             episodes = [parse_result.air_date]
-        elif parse_result.sports:
+        elif parse_result.is_sports:
             season = -1
-            episodes = [parse_result.sports_event_date]
+            episodes = [parse_result.sports_air_date]
         else:
             season = parse_result.season_number
             episodes = parse_result.episode_numbers
@@ -518,12 +510,12 @@ class PostProcessor(object):
         else:
             self.anidbEpisode = ep
 
-        #TODO: clean code. it looks like it's from hell
+        # TODO: clean code. it looks like it's from hell
         for name in ep.allNames:
 
             indexer_id = name_cache.retrieveNameFromCache(name)
             if not indexer_id:
-                show = helpers.get_show_by_name(name)
+                show = helpers.get_show(name)
                 if show:
                     indexer_id = show.indexerid
                 else:
@@ -606,7 +598,9 @@ class PostProcessor(object):
                 logger.log(u"Unable to parse, skipping: " + ex(e), logger.DEBUG)
                 continue
 
-            if cur_show:
+            if not cur_show:
+                continue
+            else:
                 show = cur_show
 
             if cur_quality and not (self.in_history and quality):
@@ -619,12 +613,14 @@ class PostProcessor(object):
 
             # for air-by-date shows we need to look up the season/episode from database
             if season == -1 and show and episodes:
-                self._log(u"Looks like this is an air-by-date or sports show, attempting to convert the date to season/episode",
-                          logger.DEBUG)
+                self._log(
+                    u"Looks like this is an air-by-date or sports show, attempting to convert the date to season/episode",
+                    logger.DEBUG)
                 airdate = episodes[0].toordinal()
                 myDB = db.DBConnection()
-                sql_result = myDB.select("SELECT season, episode FROM tv_episodes WHERE showid = ? and indexer = ? and airdate = ?",
-                                         [show.indexerid, show.indexer, airdate])
+                sql_result = myDB.select(
+                    "SELECT season, episode FROM tv_episodes WHERE showid = ? and indexer = ? and airdate = ?",
+                    [show.indexerid, show.indexer, airdate])
 
                 if sql_result:
                     season = int(sql_result[0][0])
@@ -650,7 +646,7 @@ class PostProcessor(object):
 
             if show and season and episodes:
                 return (show, season, episodes, quality)
-            
+
         return (show, season, episodes, quality)
 
     def _get_ep_obj(self, show, season, episodes):
@@ -699,7 +695,7 @@ class PostProcessor(object):
 
         # if there is a quality available in the status then we don't need to bother guessing from the filename
         if ep_obj.status in common.Quality.SNATCHED + common.Quality.SNATCHED_PROPER + common.Quality.SNATCHED_BEST:
-            oldStatus, ep_quality = common.Quality.splitCompositeStatus(ep_obj.status)  #@UnusedVariable
+            oldStatus, ep_quality = common.Quality.splitCompositeStatus(ep_obj.status)  # @UnusedVariable
             if ep_quality != common.Quality.UNKNOWN:
                 self._log(
                     u"The old status had a quality in it, using that: " + common.Quality.qualityStrings[ep_quality],
@@ -731,7 +727,9 @@ class PostProcessor(object):
         if ep_obj.status in common.Quality.SNATCHED + common.Quality.SNATCHED_PROPER:
             oldStatus, ep_quality = common.Quality.splitCompositeStatus(ep_obj.status)  # @UnusedVariable
             if ep_quality != common.Quality.UNKNOWN:
-                self._log(u"The old status had a quality in it, using that: " + common.Quality.qualityStrings[ep_quality], logger.DEBUG)
+                self._log(
+                    u"The old status had a quality in it, using that: " + common.Quality.qualityStrings[ep_quality],
+                    logger.DEBUG)
                 return ep_quality
 
         # Try guessing quality from the file name
@@ -851,7 +849,8 @@ class PostProcessor(object):
 
         # get the quality of the episode we're processing
         if quality:
-            self._log(u"Snatch history had a quality in it, using that: " + common.Quality.qualityStrings[quality], logger.DEBUG)
+            self._log(u"Snatch history had a quality in it, using that: " + common.Quality.qualityStrings[quality],
+                      logger.DEBUG)
             new_ep_quality = quality
         else:
             new_ep_quality = self._get_quality(ep_obj)
@@ -871,7 +870,9 @@ class PostProcessor(object):
             # if there's an existing file that we don't want to replace stop here
             if existing_file_status == PostProcessor.EXISTS_LARGER:
                 if self.is_proper:
-                    self._log(u"File exists and new file is smaller, new file is a proper/repack, marking it safe to replace", logger.DEBUG)
+                    self._log(
+                        u"File exists and new file is smaller, new file is a proper/repack, marking it safe to replace",
+                        logger.DEBUG)
                     return True
 
                 else:
@@ -889,7 +890,7 @@ class PostProcessor(object):
                 logger.DEBUG)
 
             # set the status of the episodes
-            #for curEp in [ep_obj] + ep_obj.relatedEps:
+            # for curEp in [ep_obj] + ep_obj.relatedEps:
             #    curEp.status = common.Quality.compositeStatus(common.SNATCHED, new_ep_quality)
 
         # delete the existing file (and company)
@@ -920,26 +921,12 @@ class PostProcessor(object):
         sql_l = []
         for cur_ep in [ep_obj] + ep_obj.relatedEps:
             with cur_ep.lock:
-                cur_release_name = None
 
-                # use the best possible representation of the release name
-                if self.good_results[self.NZB_NAME]:
-                    cur_release_name = self.nzb_name
-                    if cur_release_name.lower().endswith('.nzb'):
-                        cur_release_name = cur_release_name.rpartition('.')[0]
-                elif self.good_results[self.FOLDER_NAME]:
-                    cur_release_name = self.folder_name
-                elif self.good_results[self.FILE_NAME]:
-                    cur_release_name = self.file_name
-                    # take the extension off the filename, it's not needed
-                    if '.' in self.file_name:
-                        cur_release_name = self.file_name.rpartition('.')[0]
-
-                if cur_release_name:
-                    self._log("Found release name " + cur_release_name, logger.DEBUG)
-                    cur_ep.release_name = cur_release_name
+                if self.release_name:
+                    self._log("Found release name " + self.release_name, logger.DEBUG)
+                    cur_ep.release_name = self.release_name
                 else:
-                    logger.log("good results: " + repr(self.good_results), logger.DEBUG)
+                    cur_ep.release_name = ""
 
 		if cur_ep.torrent_hash != '':
 			client = clients.getClientIstance(sickbeard.TORRENT_METHOD)()
@@ -965,17 +952,16 @@ class PostProcessor(object):
 
                 sql_l.append(cur_ep.get_sql())
 
-                # Just want to keep this consistent for failed handling right now
-                releaseName = show_name_helpers.determineReleaseName(self.folder_path, self.nzb_name)
-                if releaseName is not None:
-                    failed_history.logSuccess(releaseName)
-                else:
-                    self._log(u"Couldn't find release in snatch history", logger.WARNING)
-
-        if sql_l:
+        if len(sql_l) > 0:
             myDB = db.DBConnection()
             myDB.mass_action(sql_l)
 
+        # Just want to keep this consistent for failed handling right now
+        releaseName = show_name_helpers.determineReleaseName(self.folder_path, self.nzb_name)
+        if releaseName is not None:
+            failed_history.logSuccess(releaseName)
+        else:
+            self._log(u"Couldn't find release in snatch history", logger.WARNING)
 
         # find the destination folder
         try:
@@ -1030,7 +1016,7 @@ class PostProcessor(object):
 
         # download subtitles
         if sickbeard.USE_SUBTITLES and ep_obj.show.subtitles:
-            for curEp in [ep_obj]:
+            for cur_ep in [ep_obj] + ep_obj.relatedEps:
                 with cur_ep.lock:
                     cur_ep.location = ek.ek(os.path.join, dest_path, new_file_name)
                     cur_ep.downloadSubtitles(force=True)
@@ -1040,21 +1026,20 @@ class PostProcessor(object):
         for cur_ep in [ep_obj] + ep_obj.relatedEps:
             with cur_ep.lock:
                 cur_ep.location = ek.ek(os.path.join, dest_path, new_file_name)
-
                 sql_l.append(cur_ep.get_sql())
 
-                # set file modify stamp to show airdate
-                if sickbeard.AIRDATE_EPISODES:
-                    ep_obj.show.airdateModifyStamp(cur_ep)
-
-        # generate nfo/tbn
-        ep_obj.createMetaFiles()
-        sql_l.append(ep_obj.get_sql())
-
-        if sql_l:
+        if len(sql_l) > 0:
             myDB = db.DBConnection()
             myDB.mass_action(sql_l)
 
+        # set file modify stamp to show airdate
+        if sickbeard.AIRDATE_EPISODES:
+            for cur_ep in [ep_obj] + ep_obj.relatedEps:
+                with cur_ep.lock:
+                    cur_ep.airdateModifyStamp()
+
+        # generate nfo/tbn
+        ep_obj.createMetaFiles()
 
         # log it to history
         history.logDownload(ep_obj, self.file_path, new_ep_quality, self.release_group)

@@ -16,26 +16,24 @@
 # You should have received a copy of the GNU General Public License
 # along with Sick Beard.  If not, see <http://www.gnu.org/licenses/>.
 
-import time
 import re
 import traceback
 import datetime
 import urlparse
 import sickbeard
 import generic
-from sickbeard.common import Quality, cpu_presets
+from sickbeard.common import Quality
 from sickbeard import logger
 from sickbeard import tvcache
 from sickbeard import db
 from sickbeard import classes
 from sickbeard import helpers
 from sickbeard import show_name_helpers
-from sickbeard.common import Overview
 from sickbeard.exceptions import ex
 from sickbeard import clients
 from lib import requests
 from lib.requests import exceptions
-from bs4 import BeautifulSoup
+from sickbeard.bs4_parser import BS4Parser
 from lib.unidecode import unidecode
 from sickbeard.helpers import sanitizeSceneName
 from sickbeard.show_name_helpers import allPossibleShowNames
@@ -145,7 +143,7 @@ class IPTorrentsProvider(generic.TorrentProvider):
 
         return [search_string]
 
-    def _doSearch(self, search_params, epcount=0, age=0):
+    def _doSearch(self, search_params, search_mode='eponly', epcount=0, age=0):
 
         results = []
         items = {'Season': [], 'Episode': [], 'RSS': []}
@@ -169,49 +167,48 @@ class IPTorrentsProvider(generic.TorrentProvider):
                     continue
 
                 try:
-                    html = BeautifulSoup(data, features=["html5lib", "permissive"])
-
-                    if not html:
-                        logger.log(u"Invalid HTML data: " + str(data), logger.DEBUG)
-                        continue
-
-                    if html.find(text='No Torrents Found!'):
-                        logger.log(u"No results found for: " + search_string + " (" + searchURL + ")", logger.DEBUG)
-                        continue
-
-                    torrent_table = html.find('table', attrs={'class': 'torrents'})
-                    torrents = torrent_table.find_all('tr') if torrent_table else []
-
-                    #Continue only if one Release is found                    
-                    if len(torrents) < 2:
-                        logger.log(u"The Data returned from " + self.name + " do not contains any torrent",
-                                   logger.WARNING)
-                        continue
-
-                    for result in torrents[1:]:
-
-                        try:
-                            torrent = result.find_all('td')[1].find('a')
-                            torrent_name = torrent.string
-                            torrent_download_url = self.urls['base_url'] + (result.find_all('td')[3].find('a'))['href']
-                            torrent_details_url = self.urls['base_url'] + torrent['href']
-                            torrent_seeders = int(result.find('td', attrs={'class': 'ac t_seeders'}).string)
-                            ## Not used, perhaps in the future ##
-                            #torrent_id = int(torrent['href'].replace('/details.php?id=', ''))
-                            #torrent_leechers = int(result.find('td', attrs = {'class' : 'ac t_leechers'}).string)
-                        except (AttributeError, TypeError):
+                    with BS4Parser(data, features=["html5lib", "permissive"]) as html:
+                        if not html:
+                            logger.log(u"Invalid HTML data: " + str(data), logger.DEBUG)
                             continue
 
-                        # Filter unseeded torrent and torrents with no name/url
-                        if mode != 'RSS' and torrent_seeders == 0:
+                        if html.find(text='No Torrents Found!'):
+                            logger.log(u"No results found for: " + search_string + " (" + searchURL + ")", logger.DEBUG)
                             continue
 
-                        if not torrent_name or not torrent_download_url:
+                        torrent_table = html.find('table', attrs={'class': 'torrents'})
+                        torrents = torrent_table.find_all('tr') if torrent_table else []
+
+                        #Continue only if one Release is found
+                        if len(torrents) < 2:
+                            logger.log(u"The Data returned from " + self.name + " do not contains any torrent",
+                                       logger.WARNING)
                             continue
 
-                        item = torrent_name, torrent_download_url
-                        logger.log(u"Found result: " + torrent_name + " (" + torrent_details_url + ")", logger.DEBUG)
-                        items[mode].append(item)
+                        for result in torrents[1:]:
+
+                            try:
+                                torrent = result.find_all('td')[1].find('a')
+                                torrent_name = torrent.string
+                                torrent_download_url = self.urls['base_url'] + (result.find_all('td')[3].find('a'))['href']
+                                torrent_details_url = self.urls['base_url'] + torrent['href']
+                                torrent_seeders = int(result.find('td', attrs={'class': 'ac t_seeders'}).string)
+                                ## Not used, perhaps in the future ##
+                                #torrent_id = int(torrent['href'].replace('/details.php?id=', ''))
+                                #torrent_leechers = int(result.find('td', attrs = {'class' : 'ac t_leechers'}).string)
+                            except (AttributeError, TypeError):
+                                continue
+
+                            # Filter unseeded torrent and torrents with no name/url
+                            if mode != 'RSS' and torrent_seeders == 0:
+                                continue
+
+                            if not torrent_name or not torrent_download_url:
+                                continue
+
+                            item = torrent_name, torrent_download_url
+                            logger.log(u"Found result: " + torrent_name + " (" + torrent_details_url + ")", logger.DEBUG)
+                            items[mode].append(item)
 
                 except Exception, e:
                     logger.log(u"Failed parsing " + self.name + " Traceback: " + traceback.format_exc(), logger.ERROR)
@@ -223,6 +220,10 @@ class IPTorrentsProvider(generic.TorrentProvider):
     def _get_title_and_url(self, item):
 
         title, url = item
+
+        if title:
+            title = u'' + title
+            title = title.replace(' ', '.')
 
         if url:
             url = str(url).replace('&amp;', '&')
@@ -277,7 +278,7 @@ class IPTorrentsProvider(generic.TorrentProvider):
 
                 for item in self._doSearch(searchString[0]):
                     title, url = self._get_title_and_url(item)
-                    results.append(classes.Proper(title, url, datetime.datetime.today()))
+                    results.append(classes.Proper(title, url, datetime.datetime.today(), self.show))
 
         return results
 
@@ -295,7 +296,6 @@ class IPTorrentsCache(tvcache.TVCache):
     def updateCache(self):
 
         # delete anything older then 7 days
-        logger.log(u"Clearing " + self.provider.name + " cache")
         self._clearCache()
 
         if not self.shouldUpdate():
@@ -319,7 +319,7 @@ class IPTorrentsCache(tvcache.TVCache):
 
 
 
-        if cl:
+        if len(cl) > 0:
             myDB = self._getDB()
             myDB.mass_action(cl)
 

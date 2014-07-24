@@ -21,35 +21,30 @@ import threading
 
 from sickbeard import logger
 
+
 class QueuePriorities:
     LOW = 10
     NORMAL = 20
     HIGH = 30
 
-class GenericQueue(object):
 
+class GenericQueue(object):
     def __init__(self):
 
         self.currentItem = None
-        self.queue = []
 
-        self.thread = None
+        self.queue = []
 
         self.queue_name = "QUEUE"
 
         self.min_priority = 0
-        
-        self.currentItem = None
 
         self.lock = threading.Lock()
-
-    def __del__(self):
-        pass
 
     def pause(self):
         logger.log(u"Pausing queue")
         self.min_priority = 999999999999
-    
+
     def unpause(self):
         logger.log(u"Unpausing queue")
         self.min_priority = 0
@@ -57,15 +52,16 @@ class GenericQueue(object):
     def add_item(self, item):
         item.added = datetime.datetime.now()
         self.queue.append(item)
-        
+
         return item
 
     def run(self, force=False):
 
         # only start a new task if one isn't already going
-        if self.thread == None or self.thread.isAlive() == False:
+        if self.currentItem is None or not self.currentItem.isAlive():
+
             # if the thread is dead then the current item should be finished
-            if self.currentItem != None:
+            if self.currentItem:
                 self.currentItem.finish()
                 self.currentItem = None
 
@@ -73,7 +69,7 @@ class GenericQueue(object):
             if len(self.queue) > 0:
 
                 # sort by priority
-                def sorter(x,y):
+                def sorter(x, y):
                     """
                     Sorts by priority descending then time ascending
                     """
@@ -85,50 +81,29 @@ class GenericQueue(object):
                         elif y.added > x.added:
                             return -1
                     else:
-                        return y.priority-x.priority
+                        return y.priority - x.priority
 
                 self.queue.sort(cmp=sorter)
-
-                queueItem = self.queue[0]
-
-                if queueItem.priority < self.min_priority:
+                if self.queue[0].priority < self.min_priority:
                     return
 
                 # launch the queue item in a thread
-                # TODO: improve thread name
-                threadName = self.queue_name + '-' + queueItem.get_thread_name()
-                self.thread = threading.Thread(None, queueItem.execute, threadName)
-                self.thread.start()
+                self.currentItem = self.queue.pop(0)
+                self.currentItem.name = self.queue_name + '-' + self.currentItem.name
+                self.currentItem.start()
 
-                self.currentItem = queueItem
+class QueueItem(threading.Thread):
+    def __init__(self, name, action_id=0):
+        super(QueueItem, self).__init__()
 
-                # take it out of the queue
-                del self.queue[0]
-
-class QueueItem:
-    def __init__(self, name, action_id = 0):
-        self.name = name
-
+        self.name = name.replace(" ", "-").upper()
         self.inProgress = False
-
         self.priority = QueuePriorities.NORMAL
-
-        self.thread_name = None
-
         self.action_id = action_id
-        
+        self.stop = threading.Event()
         self.added = None
 
-    def __del__(self):
-        pass
-
-    def get_thread_name(self):
-        if self.thread_name:
-            return self.thread_name
-        else:
-            return self.name.replace(" ","-").upper()
-
-    def execute(self):
+    def run(self):
         """Implementing classes should call this"""
 
         self.inProgress = True
@@ -137,3 +112,5 @@ class QueueItem:
         """Implementing Classes should call this"""
 
         self.inProgress = False
+
+        threading.currentThread().name = self.name

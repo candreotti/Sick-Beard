@@ -151,7 +151,7 @@ class ThePirateBayProvider(generic.TorrentProvider):
             return None
 
         try:
-            myParser = NameParser()
+            myParser = NameParser(showObj=self.show)
             parse_result = myParser.parse(fileName)
         except (InvalidNameException, InvalidShowException):
             return None
@@ -217,7 +217,7 @@ class ThePirateBayProvider(generic.TorrentProvider):
 
         return [search_string]
 
-    def _doSearch(self, search_params, epcount=0, age=0):
+    def _doSearch(self, search_params, search_mode='eponly', epcount=0, age=0):
 
         results = []
         items = {'Season': [], 'Episode': [], 'RSS': []}
@@ -250,7 +250,7 @@ class ThePirateBayProvider(generic.TorrentProvider):
                     leechers = int(torrent.group('leechers'))
 
                     #Filter unseeded torrent
-                    if mode != 'RSS' and (seeders == 0 or seeders < self.minseed or leechers < self.minleech):
+                    if mode != 'RSS' and (seeders < self.minseed or leechers < self.minleech):
                         continue
 
                         #Accept Torrent only from Good People for every Episode Search
@@ -260,7 +260,7 @@ class ThePirateBayProvider(generic.TorrentProvider):
                         continue
 
                     #Check number video files = episode in season and find the real Quality for full season torrent analyzing files in torrent 
-                    if mode == 'Season':
+                    if mode == 'Season' and search_mode == 'sponly':
                         ep_number = int(epcount / len(set(allPossibleShowNames(self.show))))
                         title = self._find_season_quality(title, id, ep_number)
 
@@ -281,6 +281,9 @@ class ThePirateBayProvider(generic.TorrentProvider):
     def _get_title_and_url(self, item):
 
         title, url, id, seeders, leechers = item
+
+        if title:
+            title = u'' + title.replace(' ', '.')
 
         if url:
             url = url.replace('&amp;', '&')
@@ -391,7 +394,7 @@ class ThePirateBayProvider(generic.TorrentProvider):
 
                 for item in self._doSearch(searchString[0]):
                     title, url = self._get_title_and_url(item)
-                    results.append(classes.Proper(title, url, datetime.datetime.today()))
+                    results.append(classes.Proper(title, url, datetime.datetime.today(), self.show))
 
         return results
 
@@ -410,7 +413,6 @@ class ThePirateBayCache(tvcache.TVCache):
     def updateCache(self):
 
         # delete anything older then 7 days
-        logger.log(u"Clearing " + self.provider.name + " cache")
         self._clearCache()
 
         if not self.shouldUpdate():
@@ -434,7 +436,7 @@ class ThePirateBayCache(tvcache.TVCache):
 
 
 
-        if cl:
+        if len(cl) > 0:
             myDB = self._getDB()
             myDB.mass_action(cl)
 

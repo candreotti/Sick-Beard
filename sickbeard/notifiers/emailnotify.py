@@ -41,11 +41,7 @@ class EmailNotifier:
         msg['Subject'] = 'Sick Beard: Test Message'
         msg['From'] = smtp_from
         msg['To'] = to
-        try:
-            self._sendmail(host, port, smtp_from, use_tls, user, pwd, [to], msg, True)
-            return True
-        except Exception as e:
-            return False
+        return self._sendmail(host, port, smtp_from, use_tls, user, pwd, [to], msg, True)
 
     def notify_snatch(self, ep_name, title="Snatched:"):
         """
@@ -54,6 +50,7 @@ class EmailNotifier:
         ep_name: The name of the episode that was snatched
         title: The title of the notification (optional)
         """
+        ep_name = ep_name.encode('utf-8', 'replace')
 
         if not sickbeard.USE_EMAIL:
             logger.log("Notification for Email not enabled, skipping this notification", logger.DEBUG)
@@ -92,6 +89,7 @@ class EmailNotifier:
         ep_name: The name of the episode that was downloaded
         title: The title of the notification (optional)
         """
+        ep_name = ep_name.encode('utf-8', 'replace')
 
         if not sickbeard.USE_EMAIL:
             logger.log("Notification for Email not enabled, skipping this notification", logger.DEBUG)
@@ -164,6 +162,7 @@ class EmailNotifier:
         ep_name: The name of the episode that was downloaded
         lang: Subtitle language wanted
         """
+        ep_name = ep_name.encode('utf-8', 'replace')
 
         if not sickbeard.USE_EMAIL:
             logger.log("Notification for Email not enabled, skipping this notification", logger.DEBUG)
@@ -221,7 +220,6 @@ class EmailNotifier:
         return addrs
 
     def _sendmail(self, host, port, smtp_from, use_tls, user, pwd, to, msg, smtpDebug=False):
-
         logger.log('HOST: %s; PORT: %s; FROM: %s, TLS: %s, USER: %s, PWD: %s, TO: %s' % (
             host, port, smtp_from, use_tls, user, pwd, to), logger.DEBUG)
         srv = smtplib.SMTP(host, int(port))
@@ -245,6 +243,8 @@ class EmailNotifier:
             return False
 
     def _parseEp(self, ep_name):
+        ep_name = ep_name.encode('utf-8', 'replace')
+
         sep = " - "
         titles = ep_name.split(sep)
         titles.sort(key=len, reverse=True)

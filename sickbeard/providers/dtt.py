@@ -69,7 +69,7 @@ class DTTProvider(generic.TorrentProvider):
     def _get_episode_search_strings(self, ep_obj, add_string=''):
         return self._get_season_search_strings(ep_obj)
 
-    def _doSearch(self, search_params, epcount=0, age=0):
+    def _doSearch(self, search_params, search_mode='eponly', epcount=0, age=0):
 
         #        show_id = self._dtt_show_id(self.show.name)
 
@@ -107,6 +107,10 @@ class DTTProvider(generic.TorrentProvider):
 
     def _get_title_and_url(self, item):
         title = item.title
+        if title:
+            title = u'' + title
+            title = title.replace(' ', '.')
+
         url = item.enclosures[0].href
 
         return (title, url)

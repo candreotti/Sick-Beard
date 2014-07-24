@@ -15,28 +15,22 @@
 # You should have received a copy of the GNU General Public License
 # along with Sick Beard.  If not, see <http://www.gnu.org/licenses/>.
 
-import time
-import json
 import re
-import traceback
 import datetime
 import urlparse
 import sickbeard
 import generic
-from sickbeard.common import Quality, cpu_presets
+from sickbeard.common import Quality
 from sickbeard import logger
 from sickbeard import tvcache
 from sickbeard import db
 from sickbeard import classes
 from sickbeard import helpers
 from sickbeard import show_name_helpers
-from sickbeard.common import Overview
 from sickbeard.exceptions import ex
 from sickbeard import clients
 from lib import requests
 from lib.requests import exceptions
-from bs4 import BeautifulSoup
-from lib.unidecode import unidecode
 from sickbeard.helpers import sanitizeSceneName
 
 
@@ -177,7 +171,7 @@ class TorrentDayProvider(generic.TorrentProvider):
 
         return [search_string]
 
-    def _doSearch(self, search_params, epcount=0, age=0):
+    def _doSearch(self, search_params, search_mode='eponly', epcount=0, age=0):
 
         results = []
         items = {'Season': [], 'Episode': [], 'RSS': []}
@@ -214,7 +208,7 @@ class TorrentDayProvider(generic.TorrentProvider):
                     seeders = int(torrent['seed'])
                     leechers = int(torrent['leech'])
 
-                    if mode != 'RSS' and (seeders == 0 or seeders < self.minseed or leechers < self.minleech):
+                    if mode != 'RSS' and (seeders < self.minseed or leechers < self.minleech):
                         continue
 
                     if not title or not url:
@@ -230,6 +224,10 @@ class TorrentDayProvider(generic.TorrentProvider):
     def _get_title_and_url(self, item):
 
         title, url = item[0], item[1]
+
+        if title:
+            title = u'' + title
+            title = title.replace(' ', '.')
 
         if url:
             url = str(url).replace('&amp;', '&')
@@ -284,7 +282,7 @@ class TorrentDayProvider(generic.TorrentProvider):
 
                 for item in self._doSearch(searchString[0]):
                     title, url = self._get_title_and_url(item)
-                    results.append(classes.Proper(title, url, datetime.datetime.today()))
+                    results.append(classes.Proper(title, url, datetime.datetime.today(), self.show))
 
         return results
 
@@ -303,7 +301,6 @@ class TorrentDayCache(tvcache.TVCache):
     def updateCache(self):
 
         # delete anything older then 7 days
-        logger.log(u"Clearing " + self.provider.name + " cache")
         self._clearCache()
 
         if not self.shouldUpdate():
@@ -327,7 +324,7 @@ class TorrentDayCache(tvcache.TVCache):
 
 
 
-        if cl:
+        if len(cl) > 0:
             myDB = self._getDB()
             myDB.mass_action(cl)
 

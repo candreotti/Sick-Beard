@@ -18,14 +18,12 @@
 
 from __future__ import with_statement
 
-import time
 import sys
 import os
 import traceback
 import urllib, urlparse
 import re
 import datetime
-
 import sickbeard
 import generic
 
@@ -42,7 +40,7 @@ from sickbeard import clients
 
 from lib import requests
 from lib.requests import exceptions
-from bs4 import BeautifulSoup
+from sickbeard.bs4_parser import BS4Parser
 from lib.unidecode import unidecode
 
 
@@ -125,7 +123,7 @@ class PublicHDProvider(generic.TorrentProvider):
 
         return [search_string]
 
-    def _doSearch(self, search_params, epcount=0, age=0):
+    def _doSearch(self, search_params, search_mode='eponly', epcount=0, age=0):
 
         results = []
         items = {'Season': [], 'Episode': [], 'RSS': []}
@@ -152,37 +150,36 @@ class PublicHDProvider(generic.TorrentProvider):
                 html = os.linesep.join([s for s in html.splitlines() if not optreg.search(s)])
 
                 try:
-                    soup = BeautifulSoup(html, features=["html5lib", "permissive"])
+                    with BS4Parser(html, features=["html5lib", "permissive"]) as html:
+                        torrent_table = html.find('table', attrs={'id': 'torrbg'})
+                        torrent_rows = torrent_table.find_all('tr') if torrent_table else []
 
-                    torrent_table = soup.find('table', attrs={'id': 'torrbg'})
-                    torrent_rows = torrent_table.find_all('tr') if torrent_table else []
-
-                    #Continue only if one Release is found
-                    if len(torrent_rows) < 2:
-                        logger.log(u"The Data returned from " + self.name + " do not contains any torrent",
-                                   logger.DEBUG)
-                        continue
-
-                    for tr in torrent_rows[1:]:
-
-                        try:
-                            link = self.url + tr.find(href=re.compile('page=torrent-details'))['href']
-                            title = tr.find(lambda x: x.has_attr('title')).text.replace('_', '.')
-                            url = tr.find(href=re.compile('magnet+'))['href']
-                            seeders = int(tr.find_all('td', {'class': 'header'})[4].text)
-                            leechers = int(tr.find_all('td', {'class': 'header'})[5].text)
-                        except (AttributeError, TypeError):
+                        #Continue only if one Release is found
+                        if len(torrent_rows) < 2:
+                            logger.log(u"The Data returned from " + self.name + " do not contains any torrent",
+                                       logger.DEBUG)
                             continue
 
-                        if mode != 'RSS' and (seeders == 0 or seeders < self.minseed or leechers < self.minleech):
-                            continue
+                        for tr in torrent_rows[1:]:
 
-                        if not title or not url:
-                            continue
+                            try:
+                                link = self.url + tr.find(href=re.compile('page=torrent-details'))['href']
+                                title = tr.find(lambda x: x.has_attr('title')).text.replace('_', '.')
+                                url = tr.find(href=re.compile('magnet+'))['href']
+                                seeders = int(tr.find_all('td', {'class': 'header'})[4].text)
+                                leechers = int(tr.find_all('td', {'class': 'header'})[5].text)
+                            except (AttributeError, TypeError):
+                                continue
 
-                        item = title, url, link, seeders, leechers
+                            if mode != 'RSS' and (seeders < self.minseed or leechers < self.minleech):
+                                continue
 
-                        items[mode].append(item)
+                            if not title or not url:
+                                continue
+
+                            item = title, url, link, seeders, leechers
+
+                            items[mode].append(item)
 
                 except Exception, e:
                     logger.log(u"Failed to parsing " + self.name + " Traceback: " + traceback.format_exc(),
@@ -198,6 +195,10 @@ class PublicHDProvider(generic.TorrentProvider):
     def _get_title_and_url(self, item):
 
         title, url, id, seeders, leechers = item
+
+        if title:
+            title = u'' + title
+            title = title.replace(' ', '.')
 
         if url:
             url = url.replace('&amp;', '&')
@@ -297,7 +298,7 @@ class PublicHDProvider(generic.TorrentProvider):
 
                 for item in self._doSearch(searchString[0]):
                     title, url = self._get_title_and_url(item)
-                    results.append(classes.Proper(title, url, datetime.datetime.today()))
+                    results.append(classes.Proper(title, url, datetime.datetime.today(), self.show))
 
         return results
 
@@ -316,7 +317,6 @@ class PublicHDCache(tvcache.TVCache):
     def updateCache(self):
 
         # delete anything older then 7 days
-        logger.log(u"Clearing " + self.provider.name + " cache")
         self._clearCache()
 
         if not self.shouldUpdate():
@@ -330,19 +330,19 @@ class PublicHDCache(tvcache.TVCache):
         else:
             return []
 
-        ql = []
+        cl = []
         for result in rss_results:
 
             item = (result[0], result[1])
             ci = self._parseItem(item)
             if ci is not None:
-                ql.append(ci)
+                cl.append(ci)
 
 
 
-        if ql:
+        if len(cl) > 0:
             myDB = self._getDB()
-            myDB.mass_action(ql)
+            myDB.mass_action(cl)
 
 
     def _parseItem(self, item):
