@@ -71,9 +71,9 @@ class PushbulletNotifier:
             pushbullet_device = sickbeard.PUSHBULLET_DEVICE
 
         if method == 'POST':
-            uri = '/api/pushes'
+            uri = '/v2/pushes'
         else:
-            uri = '/api/devices'
+            uri = '/v2/devices'
 
         logger.log(u"Pushbullet event: " + str(event), logger.DEBUG)
         logger.log(u"Pushbullet message: " + str(message), logger.DEBUG)
