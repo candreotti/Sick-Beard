@@ -341,7 +341,7 @@ class TraktChecker():
                             self.todoWanted.append(int(indexer_id), s, e)
                     else:
                         logger.log(u"Changed episode to archived: S" + str(s) + "E"+  str(e), logger.DEBUG)
-                        self.setEpisodeToArchived(newShow, s, e)
+                        self.setEpisodeToIgnored(newShow, s, e)
                         if self.episode_in_watchlist(newShow.imdbid, s, e):
                             if not self.update_watchlist("episode", "remove", newShow.imdbid, s, e):
                                 return False
