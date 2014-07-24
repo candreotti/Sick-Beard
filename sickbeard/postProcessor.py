@@ -27,6 +27,7 @@ import stat
 import sickbeard
 
 from sickbeard import db
+from sickbeard import clients
 from sickbeard import common
 from sickbeard import exceptions
 from sickbeard import helpers
