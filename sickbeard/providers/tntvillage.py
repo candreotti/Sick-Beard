@@ -36,7 +36,7 @@ from sickbeard.exceptions import ex
 from sickbeard import clients
 from lib import requests
 from lib.requests import exceptions
-from bs4 import BeautifulSoup
+from sickbeard.bs4_parser import BS4Parser
 from lib.unidecode import unidecode
 from sickbeard.helpers import sanitizeSceneName
 
@@ -222,7 +222,7 @@ class TNTVillageProvider(generic.TorrentProvider):
         if quality == Quality.SDTV:
             quality_string = ' HDTV x264'
         if quality == Quality.SDDVD:
-            quality_string = ' DVDRIP x264'
+            quality_string = ' DVDRIP'
         elif quality == Quality.HDTV:
             quality_string = ' 720p HDTV x264'
         elif quality == Quality.FULLHDTV:
@@ -298,7 +298,7 @@ class TNTVillageProvider(generic.TorrentProvider):
 
         return is_italian
 
-    def _doSearch(self, search_params, epcount=0, age=0):
+    def _doSearch(self, search_params, search_mode='eponly', epcount=0, age=0):
 
         results = []
         items = {'Season': [], 'Episode': [], 'RSS': []}
@@ -339,36 +339,37 @@ class TNTVillageProvider(generic.TorrentProvider):
 
                     data = self.getURL(searchURL)
                     if not data:
+                        logger.log(u"data is empty", logger.DEBUG)
                         continue
 
                     try:
-                        html = BeautifulSoup(data, features=["html5lib", "permissive"])
+                        with BS4Parser(data, features=["html5lib", "permissive"]) as html:
 
-                        torrent_table = html.find('table', attrs = {'class' : 'copyright'})
-                        torrent_rows = torrent_table.find_all('tr') if torrent_table else []
+                            torrent_table = html.find('table', attrs = {'class' : 'copyright'})
+                            torrent_rows = torrent_table.find_all('tr') if torrent_table else []
 
-                        #Continue only if one Release is found
-                        logger.log(u"Num of Row: "+ str(len(torrent_rows)), logger.DEBUG)
+                            #Continue only if one Release is found
+                            logger.log(u"Num of Row: "+ str(len(torrent_rows)), logger.DEBUG)
 
-                        if len(torrent_rows) == 0:
-
-                            self.uid = ""
-                            self.hash = ""
-                            self.session_id = ""
-
-                            if not self._doLogin():
-                                  return []
-
-                            continue
-
-                        if len(torrent_rows)<3:
-                            logger.log(u"The Data returned from " + self.name + " do not contains any torrent", logger.DEBUG)
-                            last_page=1
-                            continue
-
-                        if len(torrent_rows) < 42:
-                            last_page=1
-
+                            if len(torrent_rows) == 0:
+    
+                                self.uid = ""
+                                self.hash = ""
+                                self.session_id = ""
+    
+                                if not self._doLogin():
+                                    return []
+    
+                                continue
+    
+                            if len(torrent_rows)<3:
+                                logger.log(u"The Data returned from " + self.name + " do not contains any torrent", logger.DEBUG)
+                                last_page=1
+                                continue
+    
+                            if len(torrent_rows) < 42:
+                                last_page=1
+    
                             for result in torrent_table.find_all('tr')[2:]:
 
                                 try:
@@ -380,11 +381,10 @@ class TNTVillageProvider(generic.TorrentProvider):
                                     leechers = int(leechers.strip('[]'))
                                     seeders = result.find_all('td')[3].find_all('td')[2].text
                                     seeders = int(seeders.strip('[]'))
-
                                 except (AttributeError, TypeError):
                                     continue
 
-                                if mode != 'RSS' and (seeders == 0 or seeders < self.minseed or leechers < self.minleech):
+                                if mode != 'RSS' and (seeders < self.minseed or leechers < self.minleech):
                                     continue
 
                                 if not title or not download_url:
@@ -406,7 +406,7 @@ class TNTVillageProvider(generic.TorrentProvider):
                     except Exception, e:
                         logger.log(u"Failed parsing " + self.name + " Traceback: " + traceback.format_exc(), logger.ERROR)
 
-				    #For each search mode sort all the items by seeders
+                #For each search mode sort all the items by seeders
                 items[mode].sort(key=lambda tup: tup[3], reverse=True)
 
                 results += items[mode]
@@ -416,6 +416,10 @@ class TNTVillageProvider(generic.TorrentProvider):
     def _get_title_and_url(self, item):
 
         title, url, id, seeders, leechers = item
+
+        if title:
+            title = u'' + title
+            title = title.replace(' ', '.')
 
         if url:
             url = str(url).replace('&amp;', '&')
@@ -470,7 +474,7 @@ class TNTVillageProvider(generic.TorrentProvider):
 
             for item in self._doSearch(searchString[0]):
                 title, url = self._get_title_and_url(item)
-                results.append(classes.Proper(title, url, datetime.datetime.today()))
+                results.append(classes.Proper(title, url, datetime.datetime.today(), self.show))
 
         return results
 
@@ -513,7 +517,7 @@ class TNTVillageCache(tvcache.TVCache):
 
 
 
-        if cl:
+        if len(cl) > 0:
             myDB = self._getDB()
             myDB.mass_action(cl)
 

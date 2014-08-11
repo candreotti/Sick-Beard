@@ -1239,11 +1239,13 @@ class TVShow(object):
 
     def lookIfDownloadable(self, season, episode, quality, manualSearch=False):
 
-        logger.log(u"Checking if is available episode " + str(season) + "x" + str(episode) + " at quality " + Quality.qualityStrings[quality], logger.DEBUG)
+        logger.log(u"Checking if it's available episode " + str(season) + "x" + str(episode) + " at quality " +
+                   Quality.qualityStrings[quality], logger.DEBUG)
 
         # if the quality isn't one we want under any circumstances then just say no
         anyQualities, bestQualities = Quality.splitQuality(self.quality)
-        logger.log(u"any,best = " + str(anyQualities) + " " + str(bestQualities) + " and we are " + str(quality), logger.DEBUG)
+        logger.log(u"any,best = " + str(anyQualities) + " " + str(bestQualities) + " and we are " + str(quality),
+                   logger.DEBUG)
 
         if quality not in anyQualities + bestQualities:
             logger.log(u"it's not available at this quality, ignoring found episode", logger.DEBUG)

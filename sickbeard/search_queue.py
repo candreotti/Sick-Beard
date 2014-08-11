@@ -105,29 +105,24 @@ class DownloadSearchQueueItem(generic_queue.QueueItem):
     def __init__(self, show, segment):
         generic_queue.QueueItem.__init__(self, 'Downloadable Search', DOWNLOADABLE_SEARCH)
         self.priority = generic_queue.QueuePriorities.LOW
-        self.thread_name = 'DOWNLOADABLE_SEARCH-' + str(show.indexerid)
+        self.name = 'DOWNLOADABLE_SEARCH-' + str(show.indexerid)
 
         self.success = None
         self.show = show
         self.segment = segment
 
-    def __del__(self):
-        pass
+    def run(self):
+        generic_queue.QueueItem.run(self)
 
-    def execute(self):
-        generic_queue.QueueItem.execute(self)
+        try:
+            for season in self.segment:
+                sickbeard.searchDownloadable.DownloadableSearcher.currentSearchInfo = {
+                'title': self.show.name + " Season " + str(season)}
 
-        for season in self.segment:
-            sickbeard.searchDownloadable.DownloadableSearcher.currentSearchInfo = {'title': self.show.name + " Season " + str(season)}
+                downloadableEps = self.segment[season]
 
-            downloadableEps = self.segment[season]
-
-            try:
                 logger.log("Beginning downloadable search for [" + self.show.name + "]")
                 searchResult = search.searchProviders(self.show, season, downloadableEps, "skipEp", False)
-
-                # reset thread back to original name
-                threading.currentThread().name = self.thread_name
 
                 if searchResult:
                     for result in searchResult:
@@ -137,12 +132,10 @@ class DownloadSearchQueueItem(generic_queue.QueueItem):
 
                         # give the CPU a break
                         time.sleep(common.cpu_presets[sickbeard.CPU_PRESET])
-
                 else:
                     logger.log(u"No available episodes found during downloadable search for [" + self.show.name + "]")
-
-            except Exception:
-                logger.log(traceback.format_exc(), logger.DEBUG)
+        except Exception:
+            logger.log(traceback.format_exc(), logger.DEBUG)
 
         self.finish()
 

@@ -259,7 +259,7 @@ class TraktChecker():
 				
             logger.log(u"Stop looking if some show need to be added to watchlist", logger.DEBUG)
 
-    def updateWantedList(self):
+    def updateWantedList(self, indexer_id = None, paused=False):
 
         num_of_download = sickbeard.TRAKT_NUM_EP
 
@@ -268,10 +268,23 @@ class TraktChecker():
 
         logger.log(u"Start looking if having " + str(num_of_download) + " episode not watched", logger.DEBUG)
 
+        if paused == False:
+            p=0
+        else:
+            p=1
+
         myDB = db.DBConnection()
 
-        sql_selection="SELECT indexer,show_name, indexer_id, season, episode, paused FROM (SELECT * FROM tv_shows s,tv_episodes e WHERE s.indexer_id = e.showid) T1 WHERE T1.paused = 0 and T1.episode_id IN (SELECT T2.episode_id FROM tv_episodes T2 WHERE T2.showid = T1.indexer_id and T2.status in (?,?,?) and T2.season!=0 and airdate is not null ORDER BY T2.season,T2.episode LIMIT 1) ORDER BY T1.show_name,season,episode"
-        results = myDB.select(sql_selection,[SKIPPED,DOWNLOADABLE,FAILED])
+        sql_selection="SELECT indexer,show_name, indexer_id, season, episode, paused FROM (SELECT * FROM tv_shows s,tv_episodes e WHERE s.indexer_id = e.showid) T1 WHERE T1.paused = ? and T1.episode_id IN (SELECT T2.episode_id FROM tv_episodes T2 WHERE T2.showid = T1.indexer_id and T2.status in (?,?,?) and T2.season!=0 and airdate is not null ORDER BY T2.season,T2.episode LIMIT 1)"
+
+        if indexer_id is not None:
+            sql_selection=sql_selection + " and indexer_id = " + str(indexer_id)
+
+	sql_selection=sql_selection + " ORDER BY T1.show_name,season,episode"
+
+        logger.log(u"sql_selection " + sql_selection, logger.DEBUG)
+
+        results = myDB.select(sql_selection,[p,SKIPPED,DOWNLOADABLE,FAILED])
 
         for cur_result in results:
 
@@ -330,15 +343,16 @@ class TraktChecker():
                 if episode == 0 or (s*100+e) <= (int(last_s[0]['season'])*100+int(last_s[0]['episodes'])): 
 
                     if (s*100+e) > (season*100+episode):
-                        logger.log(u"Changed episode to wanted: S" + str(s) + "E"+  str(e), logger.DEBUG)
-                        if newShow is not None:
-                            self.setEpisodeToWanted(newShow, s, e)
-                            if not self.episode_in_watchlist(newShow.imdbid, s, e):
-                                if not self.update_watchlist("episode", "add", newShow.imdbid, s, e):
-                                    return False
-                            wanted = True
-                        else:
-                            self.todoWanted.append(int(indexer_id), s, e)
+                        if not paused:
+                            logger.log(u"Changed episode to wanted: S" + str(s) + "E"+  str(e), logger.DEBUG)
+                            if newShow is not None:
+                                self.setEpisodeToWanted(newShow, s, e)
+                                if not self.episode_in_watchlist(newShow.imdbid, s, e):
+                                    if not self.update_watchlist("episode", "add", newShow.imdbid, s, e):
+                                        return False
+                                wanted = True
+                            else:
+                                self.todoWanted.append(int(indexer_id), s, e)
                     else:
                         logger.log(u"Changed episode to archived: S" + str(s) + "E"+  str(e), logger.DEBUG)
                         self.setEpisodeToIgnored(newShow, s, e)

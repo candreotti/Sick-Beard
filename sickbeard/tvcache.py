@@ -334,7 +334,7 @@ class TVCache():
                 if curSeason == -1:
                     continue
                 if sickbeard.TORRENT_METHOD == 'transmission':
-                    if not episode:
+                    if not episodes:
                         ListCurEp = curResult["episodes"].split("|")
                     else:
                         ListCurEp = episode.episode
@@ -359,7 +359,7 @@ class TVCache():
                     title = curResult["name"]
                     url = curResult["url"]
 
-                    if episode:
+                    if episodes:
                         epObj = episode
                     else:
                         epObj = showObj.getEpisode(curSeason, curEp)

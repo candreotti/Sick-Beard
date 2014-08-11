@@ -200,7 +200,7 @@ def downloadableEpisode(result, endStatus=DOWNLOADABLE):
 
             notifiers.notify_downloadable(curEpObj._format_pattern('%SN - %Sx%0E - %EN'))
 
-    if sql_l:
+    if len(sql_l) > 0:
         myDB = db.DBConnection()
         myDB.mass_action(sql_l)
 

@@ -46,7 +46,8 @@ class DownloadableSearcher:
     def __init__(self):
 
         self._last_DownloadableSearch = self._get_last_DownloadableSearch()
-        self.cycleTime = 7
+
+        self.cycleTime = sickbeard.DOWNLOADABLE_SEARCH_FREQUENCY/60/24
         self.lock = threading.Lock()
         self.amActive = False
         self.amPaused = False
@@ -70,14 +71,14 @@ class DownloadableSearcher:
 
     def searchDownloadable(self, which_shows=None):
 
+        if self.amActive:
+            logger.log(u"Downloadable search is still running, not starting it again", logger.DEBUG)
+            return
+
         if which_shows:
             show_list = which_shows
         else:
             show_list = sickbeard.showList
-
-        if self.amActive:
-            logger.log(u"Downloadable search is still running, not starting it again", logger.DEBUG)
-            return
 
         self._get_last_DownloadableSearch()
 
@@ -160,11 +161,10 @@ class DownloadableSearcher:
             if curStatus == common.SKIPPED:
 
                 epObj = show.getEpisode(int(result["season"]), int(result["episode"]))
-
-                if epObj.season in downloadable:
-                    downloadable[epObj.season].append(epObj)
-                else:
+                if epObj.season not in downloadable:
                     downloadable[epObj.season] = [epObj]
+                else:
+                    downloadable[epObj.season].append(epObj)
 
         return downloadable
 
