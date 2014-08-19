@@ -17,8 +17,8 @@
 # You should have received a copy of the GNU General Public License
 # along with Sick Beard.  If not, see <http://www.gnu.org/licenses/>.
 
-import time
 import re
+import time
 import traceback
 import datetime
 import urlparse
@@ -85,9 +85,9 @@ class TNTVillageProvider(generic.TorrentProvider):
         self.supportsBacklog = True
 
         self.enabled = False
-        self.uid = None
-        self.hash = None
-        self.session_id = None
+        self._uid = None
+        self._hash = None
+        self._session_id = None
         self.username = None
         self.password = None
         self.ratio = None
@@ -105,14 +105,11 @@ class TNTVillageProvider(generic.TorrentProvider):
                               'Documentari' : 14,
                              }
 
-
         self.cache = TNTVillageCache(self)
-
-        self.categories = "cat=29"
 
         self.url = self.urls['base_url']
 
-        self.session = requests.Session()
+        self.categories = "cat=29"
 
         self.cookies = None
 
@@ -129,14 +126,14 @@ class TNTVillageProvider(generic.TorrentProvider):
 
     def _doLogin(self):
 
-        if any(requests.utils.dict_from_cookiejar(self.session.cookies).values()):
-            return True
-        
-        if self.uid and self.hash and self.session_id:
-            
-            requests.utils.add_dict_to_cookiejar(self.session.cookies, self.cookies)
-        
-        else:
+#        if any(requests.utils.dict_from_cookiejar(self.session.cookies).values()):
+#            return True
+
+#        if self._uid and self._hash and self._session_id:
+
+#            requests.utils.add_dict_to_cookiejar(self.session.cookies, self.cookies)
+
+#        else:
 
             login_params = {'UserName': self.username,
                             'PassWord': self.password,
@@ -145,7 +142,7 @@ class TNTVillageProvider(generic.TorrentProvider):
             }
 
             try:
-                response = self.session.post(self.urls['login'], data=login_params, timeout=30)
+                response = self.session.post(self.urls['login'], data=login_params, timeout=30, verify=False)
             except (requests.exceptions.ConnectionError, requests.exceptions.HTTPError), e:
                 logger.log(u'Unable to connect to ' + self.name + ' provider: ' + ex(e), logger.ERROR)
                 return False
@@ -153,19 +150,31 @@ class TNTVillageProvider(generic.TorrentProvider):
             if re.search('Sono stati riscontrati i seguenti errori', response.text) \
             or re.search('<title>Connettiti</title>', response.text) \
             or response.status_code == 401:
-                logger.log(u'Invalid username or password for ' + self.name + ' Check your settings', logger.ERROR)       
+                logger.log(u'Invalid username or password for ' + self.name + ' Check your settings', logger.ERROR)
                 return False
 
-            self.uid = requests.utils.dict_from_cookiejar(self.session.cookies)['member_id']
-            self.hash = requests.utils.dict_from_cookiejar(self.session.cookies)['pass_hash']
-            self.session_id = requests.utils.dict_from_cookiejar(self.session.cookies)['session_id']
+#            logger.log(u'cookie' + str(self.session.cookies), logger.DEBUG)
 
-            self.cookies = {'member_id': self.uid,
-                            'pass_hash': self.hash,
-                            'session_id': self.session_id
-            }
+#            if requests.utils.dict_from_cookiejar(self.session.cookies)['member_id'] and requests.utils.dict_from_cookiejar(self.session.cookies)['pass_hash'] and requests.utils.dict_from_cookiejar(self.session.cookies)['session_id']:
+#                self._uid = requests.utils.dict_from_cookiejar(self.session.cookies)['member_id']
+#                self._hash = requests.utils.dict_from_cookiejar(self.session.cookies)['pass_hash']
+#                self._session_id = requests.utils.dict_from_cookiejar(self.session.cookies)['session_id']
 
-        return True
+#                logger.log(u'member_id' + str(self._uid), logger.DEBUG)
+#                logger.log(u'pass_hash' + str(self._hash), logger.DEBUG)
+#                logger.log(u'session_id' + str(self._session_id), logger.DEBUG)
+
+#                self.cookies = {'member_id': self._uid, 
+#                                'pass_hash': self._hash,
+#                                'session_id': self._session_id
+#                }
+
+#                logger.log(u'self.cookie' + str(self.cookies), logger.DEBUG)
+
+            return True
+#            else:
+#                logger.log(u'Unable to obtain cookie for TNTVillage', logger.ERROR)
+#                return False
 
     def _get_season_search_strings(self, ep_obj):
 
@@ -179,7 +188,6 @@ class TNTVillageProvider(generic.TorrentProvider):
                 ep_string = show_name + ' S%02d' % int(ep_obj.scene_season)  #1) showName SXX
 
             search_string['Season'].append(ep_string)
-
 
         return [search_string]
 
@@ -351,16 +359,16 @@ class TNTVillageProvider(generic.TorrentProvider):
                             #Continue only if one Release is found
                             logger.log(u"Num of Row: "+ str(len(torrent_rows)), logger.DEBUG)
 
-                            if len(torrent_rows) == 0:
-    
-                                self.uid = ""
-                                self.hash = ""
-                                self.session_id = ""
-    
-                                if not self._doLogin():
-                                    return []
-    
-                                continue
+#                            if len(torrent_rows) == 0:
+#    
+#                                self._uid = ""
+#                                self._hash = ""
+#                                self._session_id = ""
+#    
+#                                if not self._doLogin():
+#                                    return []
+#    
+#                                continue
     
                             if len(torrent_rows)<3:
                                 logger.log(u"The Data returned from " + self.name + " do not contains any torrent", logger.DEBUG)
@@ -415,7 +423,7 @@ class TNTVillageProvider(generic.TorrentProvider):
 
     def _get_title_and_url(self, item):
 
-        title, url, id, seeders, leechers = item
+        title, url = item[0], item[1]
 
         if title:
             title = u'' + title
@@ -425,29 +433,6 @@ class TNTVillageProvider(generic.TorrentProvider):
             url = str(url).replace('&amp;', '&')
 
         return (title, url)
-
-    def getURL(self, url, post_data=None, headers=None, json=False):
-
-        if not self.session:
-            self._doLogin()
-
-        if not headers:
-            headers = []
-        try:
-            parsed = list(urlparse.urlparse(url))
-            parsed[2] = re.sub("/{2,}", "/", parsed[2])  # replace two or more / with one
-            url = urlparse.urlunparse(parsed)
-            response = self.session.get(url, verify=False)
-        except (requests.exceptions.ConnectionError, requests.exceptions.HTTPError), e:
-            logger.log(u"Error loading " + self.name + " URL: " + ex(e), logger.ERROR)
-            return None
-
-        if response.status_code != 200:
-            logger.log(self.name + u" page requested with url " + url + " returned status code is " + str(
-                response.status_code) + ': ' + clients.http_error_code[response.status_code], logger.WARNING)
-            return None
-
-        return response.content
 
     def findPropers(self, search_date=datetime.datetime.today()):
 
@@ -466,15 +451,15 @@ class TNTVillageProvider(generic.TorrentProvider):
             return []
 
         for sqlshow in sqlResults:
-            self.show = curshow = helpers.findCertainShow(sickbeard.showList, int(sqlshow["showid"]))
-            if not self.show: continue
-            curEp = curshow.getEpisode(int(sqlshow["season"]), int(sqlshow["episode"]))
+            self.show = helpers.findCertainShow(sickbeard.showList, int(sqlshow["showid"]))
+            if self.show:
+                curEp = self.show.getEpisode(int(sqlshow["season"]), int(sqlshow["episode"]))
 
-            searchString = self._get_episode_search_strings(curEp, add_string='PROPER|REPACK')
+                searchString = self._get_episode_search_strings(curEp, add_string='PROPER|REPACK')
 
-            for item in self._doSearch(searchString[0]):
-                title, url = self._get_title_and_url(item)
-                results.append(classes.Proper(title, url, datetime.datetime.today(), self.show))
+                for item in self._doSearch(searchString[0]):
+                    title, url = self._get_title_and_url(item)
+                    results.append(classes.Proper(title, url, datetime.datetime.today(), self.show))
 
         return results
 
@@ -490,47 +475,9 @@ class TNTVillageCache(tvcache.TVCache):
         # only poll TNTVillage every 30 minutes max
         self.minTime = 30
 
-    def updateCache(self):
+    def _getDailyData(self):
+        search_params = {'RSS': ['']}
+        return self.provider._doSearch(search_params)
 
-        # delete anything older then 7 days
-        logger.log(u"Clearing " + self.provider.name + " cache")
-        self._clearCache()
-
-        if not self.shouldUpdate():
-            return
-
-        search_params = {'RSS': []}
-        rss_results = self.provider._doSearch(search_params)
-
-        if rss_results:
-            self.setLastUpdate()
-        else:
-            return []
-
-        cl = []
-        for result in rss_results:
-
-            item = (result[0], result[1])
-            ci = self._parseItem(item)
-            if ci is not None:
-                cl.append(ci)
-
-
-
-        if len(cl) > 0:
-            myDB = self._getDB()
-            myDB.mass_action(cl)
-
-
-    def _parseItem(self, item):
-
-        (title, url) = item
-
-        if not title or not url:
-            return None
-
-        logger.log(u"Attempting to cache item:[" + title +"]", logger.DEBUG)
-
-        return self._addCacheEntry(title, url)
 
 provider = TNTVillageProvider()

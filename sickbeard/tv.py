@@ -172,6 +172,7 @@ class TVShow(object):
             self._isDirGood = True
         else:
             raise exceptions.NoNFOException("Invalid folder for the show!")
+
     location = property(_getLocation, _setLocation)
 
     # delete references to anything that's not in the internal lists
@@ -427,7 +428,7 @@ class TVShow(object):
 
             try:
                 parse_result = None
-                np = NameParser(False, showObj=self, useIndexers=True)
+                np = NameParser(False, showObj=self, tryIndexers=True)
                 parse_result = np.parse(ep_file_name)
             except (InvalidNameException, InvalidShowException):
                 pass
@@ -611,7 +612,7 @@ class TVShow(object):
         logger.log(str(self.indexerid) + u": Creating episode object from " + file, logger.DEBUG)
 
         try:
-            myParser = NameParser(True, showObj=self, useIndexers=True)
+            myParser = NameParser(showObj=self, tryIndexers=True)
             parse_result = myParser.parse(file)
         except InvalidNameException:
             logger.log(u"Unable to parse the filename " + file + " into a valid episode", logger.DEBUG)
@@ -620,7 +621,7 @@ class TVShow(object):
             logger.log(u"Unable to parse the filename " + file + " into a valid show", logger.DEBUG)
             return None
 
-        if not len(parse_result.episode_numbers) and not (parse_result.is_air_by_date or parse_result.is_sports):
+        if not len(parse_result.episode_numbers):
             logger.log("parse_result: " + str(parse_result))
             logger.log(u"No episode number found in " + file + ", ignoring it", logger.ERROR)
             return None
@@ -629,25 +630,6 @@ class TVShow(object):
         season = parse_result.season_number if parse_result.season_number != None else 1
         episodes = parse_result.episode_numbers
         rootEp = None
-
-        # if we have an air-by-date show then get the real season/episode numbers
-        if parse_result.is_air_by_date or parse_result.is_sports:
-            logger.log(
-                u"Looks like this is an air-by-date or sports show, attempting to convert the date to season/episode",
-                logger.DEBUG)
-            airdate = parse_result.air_date.toordinal() if parse_result.air_date else parse_result.sports_air_date.toordinal()
-            myDB = db.DBConnection()
-            sql_result = myDB.select(
-                "SELECT season, episode FROM tv_episodes WHERE showid = ? and indexer = ? and airdate = ?",
-                [self.indexerid, self.indexer, airdate])
-
-            if sql_result:
-                season = int(sql_result[0][0])
-                episodes = [int(sql_result[0][1])]
-            else:
-                logger.log(u"Unable to find episode with date " + str(
-                    parse_result.air_date) + " for show " + self.name + ", skipping", logger.WARNING)
-                return None
 
         sql_l = []
         for curEpNum in episodes:
@@ -739,7 +721,7 @@ class TVShow(object):
                 if newStatus != None:
                     with curEp.lock:
                         logger.log(u"STATUS: we have an associated file, so setting the status from " + str(
-                            curEp.status) + u" to DOWNLOADED/" + str(Quality.statusFromName(file)), logger.DEBUG)
+                            curEp.status) + u" to DOWNLOADED/" + str(Quality.statusFromName(file, anime=self.is_anime)), logger.DEBUG)
                         curEp.status = Quality.compositeStatus(newStatus, newQuality)
 
             with curEp.lock:
@@ -1012,12 +994,13 @@ class TVShow(object):
         for cache_file in ek.ek(glob.glob, ek.ek(os.path.join, image_cache_dir, str(self.indexerid) + '.*')):
             logger.log(u"Deleting cache file " + cache_file)
             os.remove(cache_file)
-            if sickbeard.TRAKT_REMOVE_SHOW_WATCHLIST and sickbeard.USE_TRAKT:
-                logger.log(u"Removing show: indexerid " + str(self.indexerid) + ", Title " + str(self.name) + " from Watchlist", logger.DEBUG)
-                if sickbeard.traktCheckerScheduler.action.update_watchlist("show", "remove", self.indexerid, 0, 0):
-                    sickbeard.traktCheckerScheduler.action.refreshShowWatchlist()
-                else:
-                    return False
+
+        if sickbeard.TRAKT_REMOVE_SHOW_WATCHLIST and sickbeard.USE_TRAKT:
+            logger.log(u"Removing show: indexerid " + str(self.indexerid) + ", Title " + str(self.name) + " from Watchlist", logger.DEBUG)
+            if sickbeard.traktCheckerScheduler.action.update_watchlist("show", "remove", self, 0, 0):
+                sickbeard.traktCheckerScheduler.action.refreshShowWatchlist()
+            else:
+                return False
 
     def populateCache(self):
         cache_inst = image_cache.ImageCache()
@@ -1347,6 +1330,8 @@ class TVEpisode(object):
         self._release_name = ''
         self._is_proper = False
         self._torrent_hash = ''
+        self._version = 0
+        self._release_group = ''
 
         # setting any of the above sets the dirty flag
         self.dirty = True
@@ -1391,6 +1376,8 @@ class TVEpisode(object):
     release_name = property(lambda self: self._release_name, dirty_setter("_release_name"))
     is_proper = property(lambda self: self._is_proper, dirty_setter("_is_proper"))
     torrent_hash = property(lambda self: self._torrent_hash, dirty_setter("_torrent_hash"))
+    version = property(lambda self: self._version, dirty_setter("_version"))
+    release_group = property(lambda self: self._release_group, dirty_setter("_release_group"))
 
     def _set_location(self, new_location):
         logger.log(u"Setter sets location to " + new_location, logger.DEBUG)
@@ -1600,6 +1587,12 @@ class TVEpisode(object):
             if sqlResults[0]["torrent_hash"]:
                 self.torrent_hash = sqlResults[0]["torrent_hash"]
 
+            if sqlResults[0]["version"]:
+                self.version = int(sqlResults[0]["version"])
+
+            if sqlResults[0]["release_group"] is not None:
+                self.release_group = sqlResults[0]["release_group"]
+
             self.dirty = False
             return True
 
@@ -1753,7 +1746,7 @@ class TVEpisode(object):
                 logger.log(
                     u"5 Status changes from " + str(self.status) + " to " + str(Quality.statusFromName(self.location)),
                     logger.DEBUG)
-                self.status = Quality.statusFromName(self.location)
+                self.status = Quality.statusFromName(self.location, anime=self.show.is_anime)
 
         # shouldn't get here probably
         else:
@@ -1778,8 +1771,8 @@ class TVEpisode(object):
             if self.status == UNKNOWN:
                 if sickbeard.helpers.isMediaFile(self.location):
                     logger.log(u"7 Status changes from " + str(self.status) + " to " + str(
-                        Quality.statusFromName(self.location)), logger.DEBUG)
-                    self.status = Quality.statusFromName(self.location)
+                        Quality.statusFromName(self.location, anime=self.show.is_anime)), logger.DEBUG)
+                    self.status = Quality.statusFromName(self.location, anime=self.show.is_anime)
 
             nfoFile = sickbeard.helpers.replaceExtension(self.location, "nfo")
             logger.log(str(self.show.indexerid) + u": Using NFO name " + nfoFile, logger.DEBUG)
@@ -1925,24 +1918,27 @@ class TVEpisode(object):
             return [
                 "UPDATE tv_episodes SET indexerid = ?, indexer = ?, name = ?, description = ?, subtitles = ?, "
                 "subtitles_searchcount = ?, subtitles_lastsearch = ?, airdate = ?, hasnfo = ?, hastbn = ?, status = ?, "
-                "location = ?, file_size = ?, release_name = ?, is_proper = ?, showid = ?, season = ?, episode = ?, "
-                "absolute_number = ? WHERE episode_id = ?",
+                "location = ?, file_size = ?, release_name = ?, is_proper = ?, showid = ?, season = ?, episode = ?, torrent_hash = ?, "
+                "absolute_number = ?, version = ?, release_group = ? WHERE episode_id = ?",
                 [self.indexerid, self.indexer, self.name, self.description, ",".join([sub for sub in self.subtitles]),
                  self.subtitles_searchcount, self.subtitles_lastsearch, self.airdate.toordinal(), self.hasnfo,
                  self.hastbn,
                  self.status, self.location, self.file_size, self.release_name, self.is_proper, self.show.indexerid,
-                 self.season, self.episode, self.absolute_number, epID]]
+                 self.season, self.episode, self.torrent_hash, self.absolute_number, self.version, self.release_group, epID]]
         else:
             # use a custom insert method to get the data into the DB.
             return [
-                "INSERT OR IGNORE INTO tv_episodes (episode_id, indexerid, indexer, name, description, subtitles, subtitles_searchcount, subtitles_lastsearch, airdate, hasnfo, hastbn, status, location, file_size, release_name, is_proper, showid, season, episode, absolute_number) VALUES "
-                "((SELECT episode_id FROM tv_episodes WHERE showid = ? AND season = ? AND episode = ?),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);",
+                "INSERT OR IGNORE INTO tv_episodes (episode_id, indexerid, indexer, name, description, subtitles, "
+                "subtitles_searchcount, subtitles_lastsearch, airdate, hasnfo, hastbn, status, location, file_size, "
+                "release_name, is_proper, showid, season, episode, torrent_hash, absolute_number, version, release_group) VALUES "
+                "((SELECT episode_id FROM tv_episodes WHERE showid = ? AND season = ? AND episode = ?)"
+                ",?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);",
                 [self.show.indexerid, self.season, self.episode, self.indexerid, self.indexer, self.name,
                  self.description,
                  ",".join([sub for sub in self.subtitles]), self.subtitles_searchcount, self.subtitles_lastsearch,
                  self.airdate.toordinal(), self.hasnfo, self.hastbn, self.status, self.location, self.file_size,
-                 self.release_name, self.is_proper, self.show.indexerid, self.season, self.episode,
-                 self.absolute_number]]
+                 self.release_name, self.is_proper, self.show.indexerid, self.season, self.episode, self.torrent_hash, 
+                 self.absolute_number, self.version, self.release_group]]
 
     def saveToDB(self, forceSave=False):
         """
@@ -1976,7 +1972,9 @@ class TVEpisode(object):
                         "release_name": self.release_name,
                         "is_proper": self.is_proper,
                         "torrent_hash": self.torrent_hash,
-                        "absolute_number": self.absolute_number
+                        "absolute_number": self.absolute_number,
+                        "version": self.version,
+                        "release_group": self.release_group
         }
         controlValueDict = {"showid": self.show.indexerid,
                             "season": self.season,
@@ -2040,6 +2038,7 @@ class TVEpisode(object):
 
         if len(self.relatedEps) == 0:
             goodName = self.name
+
         else:
             goodName = ''
 

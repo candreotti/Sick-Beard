@@ -56,20 +56,18 @@ import threading
 import getopt
 
 import sickbeard
-from sickbeard import db
+from sickbeard import db, logger, network_timezones, failed_history, name_cache, versionChecker
 from sickbeard.tv import TVShow
-from sickbeard import logger, network_timezones, failed_history, name_cache
 from sickbeard.webserveInit import SRWebServer
-from sickbeard.version import SICKBEARD_VERSION
 from sickbeard.databases.mainDB import MIN_DB_VERSION, MAX_DB_VERSION
 from sickbeard.event_queue import Events
-
 from lib.configobj import ConfigObj
 
 throwaway = datetime.datetime.strptime('20110101', '%Y%m%d')
 
 signal.signal(signal.SIGINT, sickbeard.sig_handler)
 signal.signal(signal.SIGTERM, sickbeard.sig_handler)
+
 
 class SickBeard(object):
     def __init__(self):
@@ -129,7 +127,8 @@ class SickBeard(object):
         sickbeard.SYS_ENCODING = None
 
         try:
-            locale.setlocale(locale.LC_ALL, "")
+            locale.setlocale(locale.LC_ALL, "UTF-8")
+            locale.setlocale(locale.LC_CTYPE, "UTF-8")
             sickbeard.SYS_ENCODING = locale.getpreferredencoding()
         except (locale.Error, IOError):
             pass
@@ -332,8 +331,8 @@ class SickBeard(object):
             'password': sickbeard.WEB_PASSWORD,
             'enable_https': sickbeard.ENABLE_HTTPS,
             'handle_reverse_proxy': sickbeard.HANDLE_REVERSE_PROXY,
-            'https_cert': sickbeard.HTTPS_CERT,
-            'https_key': sickbeard.HTTPS_KEY,
+            'https_cert': os.path.join(sickbeard.PROG_DIR, sickbeard.HTTPS_CERT),
+            'https_key': os.path.join(sickbeard.PROG_DIR, sickbeard.HTTPS_KEY),
         }
 
         # start web server
@@ -349,7 +348,7 @@ class SickBeard(object):
             os._exit(1)
 
         if self.consoleLogging:
-            print "Starting up SickBeard " + SICKBEARD_VERSION + " from " + sickbeard.CONFIG_FILE
+            print "Starting up SickBeard " + sickbeard.BRANCH + " from " + sickbeard.CONFIG_FILE
 
         # Fire up all our threads
         sickbeard.start()
@@ -368,6 +367,7 @@ class SickBeard(object):
         if self.forceUpdate or sickbeard.UPDATE_SHOWS_ON_START:
             sickbeard.showUpdateScheduler.action.run(force=True)  # @UndefinedVariable
 
+        # Launch browser
         if sickbeard.LAUNCH_BROWSER and not (self.noLaunch or self.runAsDaemon):
             sickbeard.launchBrowser(self.startPort)
 
@@ -455,7 +455,8 @@ class SickBeard(object):
                 sickbeard.showList.append(curShow)
             except Exception, e:
                 logger.log(
-                    u"There was an error creating the show in " + sqlShow["location"] + ": " + str(e).decode('utf-8', 'replace'),
+                    u"There was an error creating the show in " + sqlShow["location"] + ": " + str(e).decode('utf-8',
+                                                                                                             'replace'),
                     logger.ERROR)
 
     def restore(self, srcDir, dstDir):
@@ -482,8 +483,12 @@ class SickBeard(object):
 
             # shutdown web server
             if self.webserver:
+                logger.log("Shutting down Tornado")
                 self.webserver.shutDown()
-                self.webserver = None
+                try:
+                    self.webserver.join(10)
+                except:
+                    pass
 
             # if run as daemon delete the pidfile
             if self.runAsDaemon and self.CREATEPID:
@@ -518,6 +523,7 @@ class SickBeard(object):
 
         # system exit
         os._exit(0)
+
 
 if __name__ == "__main__":
     if sys.hexversion >= 0x020600F0:

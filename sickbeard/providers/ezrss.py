@@ -56,7 +56,7 @@ class EZRSSProvider(generic.TorrentProvider):
     def getQuality(self, item, anime=False):
 
         filename = item.filename
-        quality = Quality.nameQuality(filename)
+        quality = Quality.sceneQuality(filename, anime)
 
         return quality
 
@@ -81,10 +81,8 @@ class EZRSSProvider(generic.TorrentProvider):
 
         params['show_name'] = helpers.sanitizeSceneName(self.show.name, ezrss=True).replace('.', ' ').encode('utf-8')
 
-        if ep_obj.show.air_by_date:
-            params['date'] = str(ep_obj.airdate).split('-')[0]
-        elif ep_obj.show.sports:
-            params['date'] = str(ep_obj.airdate).split('-')[0]
+        if ep_obj.show.air_by_date or ep_obj.show.sports:
+            params['season'] = str(ep_obj.airdate).split('-')[0]
         elif ep_obj.show.anime:
             params['season'] = "%d" % ep_obj.scene_absolute_number
         else:
@@ -101,9 +99,7 @@ class EZRSSProvider(generic.TorrentProvider):
 
         params['show_name'] = helpers.sanitizeSceneName(self.show.name, ezrss=True).replace('.', ' ').encode('utf-8')
 
-        if self.show.air_by_date:
-            params['date'] = str(ep_obj.airdate)
-        elif self.show.sports:
+        if self.show.air_by_date or self.show.sports:
             params['date'] = str(ep_obj.airdate)
         elif self.show.anime:
             params['episode'] = "%i" % int(ep_obj.scene_absolute_number)
@@ -178,27 +174,12 @@ class EZRSSCache(tvcache.TVCache):
         # only poll EZRSS every 15 minutes max
         self.minTime = 15
 
-    def _getRSSData(self):
+    def _getDailyData(self):
 
         rss_url = self.provider.url + 'feed/'
         logger.log(self.provider.name + " cache update URL: " + rss_url, logger.DEBUG)
 
-        return self.getRSSFeed(rss_url)
-
-    def _parseItem(self, item):
-
-        (title, url) = self.provider._get_title_and_url(item)
-
-        if title and url:
-            logger.log(u"RSS Feed provider: [" + self.provider.name + "] Attempting to add item to cache: " + title, logger.DEBUG)
-            url = self._translateLinkURL(url)
-            return self._addCacheEntry(title, url)
-
-        else:
-            logger.log(
-                u"The XML returned from the " + self.provider.name + " feed is incomplete, this result is unusable",
-                logger.ERROR)
-            return None
+        return self.getRSSFeed(rss_url).entries
 
 
 provider = EZRSSProvider()

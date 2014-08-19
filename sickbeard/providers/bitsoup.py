@@ -19,9 +19,11 @@
 import re
 import traceback
 import datetime
-import urlparse
 import sickbeard
 import generic
+import requests
+import requests.exceptions
+
 from sickbeard.common import Quality
 from sickbeard import logger
 from sickbeard import tvcache
@@ -30,12 +32,9 @@ from sickbeard import classes
 from sickbeard import helpers
 from sickbeard import show_name_helpers
 from sickbeard.exceptions import ex
-from sickbeard import clients
-from lib import requests
-from lib.requests import exceptions
-from sickbeard.bs4_parser import BS4Parser
-from lib.unidecode import unidecode
 from sickbeard.helpers import sanitizeSceneName
+from sickbeard.bs4_parser import BS4Parser
+from unidecode import unidecode
 
 
 class BitSoupProvider(generic.TorrentProvider):
@@ -83,10 +82,11 @@ class BitSoupProvider(generic.TorrentProvider):
                         'ssl': 'yes'
         }
 
-        self.session = requests.Session()
+        if not self.session:
+            self.session = requests.session()
 
         try:
-            response = self.session.post(self.urls['login'], data=login_params, timeout=30)
+            response = self.session.post(self.urls['login'], data=login_params, timeout=30, verify=False)
         except (requests.exceptions.ConnectionError, requests.exceptions.HTTPError), e:
             logger.log(u'Unable to connect to ' + self.name + ' provider: ' + ex(e), logger.ERROR)
             return False
@@ -166,7 +166,7 @@ class BitSoupProvider(generic.TorrentProvider):
                 data = self.getURL(searchURL)
                 if not data:
                     continue
-                
+
                 try:
                     with BS4Parser(data, "html.parser") as html:
                         torrent_table = html.find('table', attrs={'class': 'koptekst'})
@@ -227,32 +227,6 @@ class BitSoupProvider(generic.TorrentProvider):
 
         return (title, url)
 
-    def getURL(self, url, post_data=None, headers=None, json=False):
-
-        if not self.session:
-            self._doLogin()
-
-        if not headers:
-            headers = []
-
-        try:
-            # Remove double-slashes from url
-            parsed = list(urlparse.urlparse(url))
-            parsed[2] = re.sub("/{2,}", "/", parsed[2])  # replace two or more / with one
-            url = urlparse.urlunparse(parsed)
-
-            response = self.session.get(url, verify=False)
-        except (requests.exceptions.ConnectionError, requests.exceptions.HTTPError), e:
-            logger.log(u"Error loading " + self.name + " URL: " + ex(e), logger.ERROR)
-            return None
-
-        if response.status_code != 200:
-            logger.log(self.name + u" page requested with url " + url + " returned status code is " + str(
-                response.status_code) + ': ' + clients.http_error_code[response.status_code], logger.WARNING)
-            return None
-
-        return response.content
-
     def findPropers(self, search_date=datetime.datetime.today()):
 
         results = []
@@ -294,46 +268,9 @@ class BitSoupCache(tvcache.TVCache):
         # only poll TorrentBytes every 20 minutes max
         self.minTime = 20
 
-    def updateCache(self):
-
-        # delete anything older then 7 days
-        logger.log(u"Clearing " + self.provider.name + " cache")
-        self._clearCache()
-
-        if not self.shouldUpdate():
-            return
-
+    def _getDailyData(self):
         search_params = {'RSS': ['']}
-        rss_results = self.provider._doSearch(search_params)
-
-        if rss_results:
-            self.setLastUpdate()
-        else:
-            return []
-
-        cl = []
-        for result in rss_results:
-
-            item = (result[0], result[1])
-            ci = self._parseItem(item)
-            if ci is not None:
-                cl.append(ci)
-
-        if len(cl) > 0:
-            myDB = self._getDB()
-            myDB.mass_action(cl)
-
-
-    def _parseItem(self, item):
-
-        (title, url) = item
-
-        if not title or not url:
-            return None
-
-        logger.log(u"Attempting to cache item:[" + title + "]", logger.DEBUG)
-
-        return self._addCacheEntry(title, url)
+        return self.provider._doSearch(search_params)
 
 
 provider = BitSoupProvider()

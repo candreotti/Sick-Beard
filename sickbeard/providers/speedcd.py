@@ -163,10 +163,12 @@ class SpeedCDProvider(generic.TorrentProvider):
                 post_data = dict({'/browse.php?': None, 'cata': 'yes', 'jxt': 4, 'jxw': 'b', 'search': search_string},
                                  **self.categories[mode])
 
-                data = self.session.post(self.urls['search'], data=post_data).json()
+                parsedJSON = self.getURL(self.urls['search'], post_data=post_data, json=True)
+                if not parsedJSON:
+                    continue
 
                 try:
-                    torrents = data.get('Fs', [])[0].get('Cn', {}).get('torrents', [])
+                    torrents = parsedJSON.get('Fs', [])[0].get('Cn', {}).get('torrents', [])
                 except:
                     continue
 
@@ -209,36 +211,6 @@ class SpeedCDProvider(generic.TorrentProvider):
 
         return (title, url)
 
-    def getURL(self, url, post_data=None, headers=None, json=False):
-        if not self.session:
-            self._doLogin()
-
-        try:
-            # Remove double-slashes from url
-            parsed = list(urlparse.urlparse(url))
-            parsed[2] = re.sub("/{2,}", "/", parsed[2])  # replace two or more / with one
-            url = urlparse.urlunparse(parsed)
-
-            if sickbeard.PROXY_SETTING:
-                proxies = {
-                    "http": sickbeard.PROXY_SETTING,
-                    "https": sickbeard.PROXY_SETTING,
-                }
-
-                r = self.session.get(url, proxies=proxies, verify=False)
-            else:
-                r = self.session.get(url, verify=False)
-        except (requests.exceptions.ConnectionError, requests.exceptions.HTTPError), e:
-            logger.log(u"Error loading " + self.name + " URL: " + ex(e), logger.ERROR)
-            return None
-
-        if r.status_code != 200:
-            logger.log(self.name + u" page requested with url " + url + " returned status code is " + str(
-                r.status_code) + ': ' + clients.http_error_code[r.status_code], logger.WARNING)
-            return None
-
-        return r.content
-
     def findPropers(self, search_date=datetime.datetime.today()):
 
         results = []
@@ -280,47 +252,10 @@ class SpeedCDCache(tvcache.TVCache):
         # only poll Speedcd every 20 minutes max
         self.minTime = 20
 
-    def updateCache(self):
-
-        # delete anything older then 7 days
-        self._clearCache()
-
-        if not self.shouldUpdate():
-            return
-
+    def _getDailyData(self):
         search_params = {'RSS': ['']}
-        rss_results = self.provider._doSearch(search_params)
+        return self.provider._doSearch(search_params)
 
-        if rss_results:
-            self.setLastUpdate()
-        else:
-            return []
-
-        cl = []
-        for result in rss_results:
-
-            item = (result[0], result[1])
-            ci = self._parseItem(item)
-            if ci is not None:
-                cl.append(ci)
-
-
-
-        if len(cl) > 0:
-            myDB = self._getDB()
-            myDB.mass_action(cl)
-
-
-    def _parseItem(self, item):
-
-        (title, url) = item
-
-        if not title or not url:
-            return None
-
-        logger.log(u"Attempting to cache item:[" + title + "]", logger.DEBUG)
-
-        return self._addCacheEntry(title, url)
 
 
 provider = SpeedCDProvider()

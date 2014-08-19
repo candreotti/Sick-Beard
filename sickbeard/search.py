@@ -22,6 +22,7 @@ import os
 import re
 import threading
 import datetime
+import traceback
 
 import sickbeard
 
@@ -36,10 +37,9 @@ from sickbeard import notifiers
 from sickbeard import nzbSplitter
 from sickbeard import ui
 from sickbeard import encodingKludge as ek
-from sickbeard import providers
 from sickbeard import failed_history
 from sickbeard.exceptions import ex
-from sickbeard.providers.generic import GenericProvider, tvcache
+from sickbeard.providers.generic import GenericProvider
 from sickbeard.blackandwhitelist import BlackAndWhiteList
 
 def _downloadResult(result):
@@ -52,9 +52,6 @@ def _downloadResult(result):
     """
 
     resProvider = result.provider
-
-    newResult = False
-
     if resProvider == None:
         logger.log(u"Invalid provider name - this is a coding error, report it please", logger.ERROR)
         return False
@@ -62,7 +59,6 @@ def _downloadResult(result):
     # nzbs with an URL can just be downloaded from the provider
     if result.resultType == "nzb":
         newResult = resProvider.downloadResult(result)
-
     # if it's an nzb data result
     elif result.resultType == "nzbdata":
 
@@ -83,20 +79,13 @@ def _downloadResult(result):
         except EnvironmentError, e:
             logger.log(u"Error trying to save NZB to black hole: " + ex(e), logger.ERROR)
             newResult = False
-
     elif resProvider.providerType == "torrent":
         newResult = resProvider.downloadResult(result)
-
     else:
         logger.log(u"Invalid provider type - this is a coding error, report it please", logger.ERROR)
-        return False
-
-    if newResult and sickbeard.USE_FAILED_DOWNLOADS:
-        ui.notifications.message('Episode snatched',
-                                 '<b>%s</b> snatched from <b>%s</b>' % (result.name, resProvider.name))
+        newResult = False
 
     return newResult
-
 
 def snatchEpisode(result, endStatus=SNATCHED):
     """
@@ -109,7 +98,8 @@ def snatchEpisode(result, endStatus=SNATCHED):
     endStatus: the episode status that should be used for the episode object once it's snatched.
     """
 
-    if result is None: return False
+    if result is None:
+        return False
 
     result.priority = 0  # -1 = low, 0 = normal, 1 = high
     if sickbeard.ALLOW_HIGH_PRIORITY:
@@ -139,9 +129,7 @@ def snatchEpisode(result, endStatus=SNATCHED):
         if sickbeard.TORRENT_METHOD == "blackhole":
             dlResult = _downloadResult(result)
         else:
-            # Sets per provider seed ratio
-            result.ratio = result.provider.seedRatio()
-            result.content = result.provider.getURL(result.url) if not result.url.startswith('magnet') else None
+            # Snatches torrent with client
             client = clients.getClientIstance(sickbeard.TORRENT_METHOD)()
             dlResult = client.sendTORRENT(result)
     else:
@@ -190,6 +178,10 @@ def downloadableEpisode(result, endStatus=DOWNLOADABLE):
     result: SearchResult instance to be snatched.
     endStatus: the episode status that should be used for the episode object once it's found on torrent provider.
     """
+
+    if result is None:
+        return False
+
     # don't notify when we re-download an episode
     sql_l = []
     for curEpObj in result.episodes:
@@ -367,37 +359,32 @@ def filterSearchResults(show, season, results):
 
     return foundResults
 
-
 def searchForNeededEpisodes(show, episodes):
     foundResults = {}
+
     didSearch = False
 
-    providers = [x for x in sickbeard.providers.sortedProviderList() if x.isActive() and not x.backlog_only]
-    if not len(providers):
-        logger.log(u"No NZB/Torrent providers found or enabled in the sickrage config. Please check your settings.",
-                   logger.ERROR)
-        return
-
     origThreadName = threading.currentThread().name
+
+    providers = [x for x in sickbeard.providers.sortedProviderList() if x.isActive() and not x.backlog_only]
     for curProviderCount, curProvider in enumerate(providers):
         if curProvider.anime_only and not show.is_anime:
-            logger.log(u"" + str(show.name) + " is not an anime skiping ...")
+            logger.log(u"" + str(show.name) + " is not an anime, skiping", logger.DEBUG)
             continue
 
+        threading.currentThread().name = origThreadName + " :: [" + curProvider.name + "]"
+
         try:
-            threading.currentThread().name = origThreadName + " :: [" + curProvider.name + "]"
             curFoundResults = curProvider.searchRSS(episodes)
-            threading.currentThread().name = origThreadName
         except exceptions.AuthException, e:
             logger.log(u"Authentication error: " + ex(e), logger.ERROR)
-            if curProviderCount != len(providers):
-                continue
-            break
+            continue
         except Exception, e:
             logger.log(u"Error while searching " + curProvider.name + ", skipping: " + ex(e), logger.ERROR)
-            if curProviderCount != len(providers):
-                continue
-            break
+            logger.log(traceback.format_exc(), logger.DEBUG)
+            continue
+        finally:
+            threading.currentThread().name = origThreadName
 
         didSearch = True
 
@@ -425,7 +412,7 @@ def searchForNeededEpisodes(show, episodes):
 
     if not didSearch:
         logger.log(
-            u"No NZB/Torrent providers found or enabled in the sickbeard config. Please check your settings.",
+            u"No NZB/Torrent providers found or enabled in the sickbeard config for daily searches. Please check your settings.",
             logger.ERROR)
 
     return foundResults.values() if len(foundResults) else {}
@@ -435,11 +422,7 @@ def searchProviders(show, season, episodes, type="wantEP", manualSearch=False):
     foundResults = {}
     finalResults = []
 
-    providers = [x for x in sickbeard.providers.sortedProviderList() if x.isActive()]
-    if not len(providers):
-        logger.log(u"No NZB/Torrent providers found or enabled in the sickrage config. Please check your settings.",
-                   logger.ERROR)
-        return
+    didSearch = False
 
     # check if we want to search for season packs instead of just season/episode
     seasonSearch = False
@@ -449,17 +432,21 @@ def searchProviders(show, season, episodes, type="wantEP", manualSearch=False):
             seasonSearch = True
 
     origThreadName = threading.currentThread().name
-    for providerNum, provider in enumerate(providers):
-        if provider.anime_only and not show.is_anime:
-            logger.log(u"" + str(show.name) + " is not an anime skiping ...")
+
+    providers = [x for x in sickbeard.providers.sortedProviderList() if x.isActive()]
+    for providerNum, curProvider in enumerate(providers):
+        if curProvider.anime_only and not show.is_anime:
+            logger.log(u"" + str(show.name) + " is not an anime, skiping", logger.DEBUG)
             continue
 
-        foundResults[provider.name] = {}
+        threading.currentThread().name = origThreadName + " :: [" + curProvider.name + "]"
+
+        foundResults[curProvider.name] = {}
         searchCount = 0
 
         search_mode = 'eponly'
-        if seasonSearch and provider.search_mode == 'sponly':
-            search_mode = provider.search_mode
+        if seasonSearch and curProvider.search_mode == 'sponly':
+            search_mode = curProvider.search_mode
 
         while(True):
             searchCount += 1
@@ -470,21 +457,24 @@ def searchProviders(show, season, episodes, type="wantEP", manualSearch=False):
                 logger.log(u"Searching for episodes we need from " + show.name + " Season " + str(season))
 
             try:
-                threading.currentThread().name = origThreadName + " :: [" + provider.name + "]"
                 if type == "wantEP":
-                    searchResults = provider.findSearchResults(show, season, episodes, search_mode, manualSearch)
+                    searchResults = curProvider.findSearchResults(show, season, episodes, search_mode, manualSearch)
                 elif type == "skipEp":
-                    searchResults = provider.findSearchResultsDownloadable(show, season, episodes, search_mode, manualSearch)
+                    searchResults = curProvider.findSearchResultsDownloadable(show, season, episodes, search_mode, manualSearch)
                 else:
                     logger.log(u"Invalid option name - this is a coding error, report it please", logger.ERROR)
                     return None
-                threading.currentThread().name = origThreadName
             except exceptions.AuthException, e:
                 logger.log(u"Authentication error: " + ex(e), logger.ERROR)
                 break
             except Exception, e:
-                logger.log(u"Error while searching " + provider.name + ", skipping: " + ex(e), logger.ERROR)
+                logger.log(u"Error while searching " + curProvider.name + ", skipping: " + ex(e), logger.ERROR)
+                logger.log(traceback.format_exc(), logger.DEBUG)
                 break
+            finally:
+                threading.currentThread().name = origThreadName
+
+            didSearch = True
 
             if len(searchResults):
                 # make a list of all the results for this provider
@@ -494,12 +484,12 @@ def searchProviders(show, season, episodes, type="wantEP", manualSearch=False):
                         lambda x: show_name_helpers.filterBadReleases(x.name) and x.show == show, searchResults[curEp])
 
                     if curEp in foundResults:
-                        foundResults[provider.name][curEp] += searchResults[curEp]
+                        foundResults[curProvider.name][curEp] += searchResults[curEp]
                     else:
-                        foundResults[provider.name][curEp] = searchResults[curEp]
+                        foundResults[curProvider.name][curEp] = searchResults[curEp]
 
                 break
-            elif not provider.search_fallback or searchCount == 2:
+            elif not curProvider.search_fallback or searchCount == 2:
                 break
 
             if search_mode == 'sponly':
@@ -510,22 +500,20 @@ def searchProviders(show, season, episodes, type="wantEP", manualSearch=False):
                 search_mode = 'sponly'
 
         # skip to next provider if we have no results to process
-        if not len(foundResults[provider.name]):
-            if providerNum != len(providers):
-                continue
-            break
+        if not len(foundResults[curProvider.name]):
+            continue
 
         anyQualities, bestQualities = Quality.splitQuality(show.quality)
 
         # pick the best season NZB
         bestSeasonNZB = None
-        if SEASON_RESULT in foundResults[provider.name]:
-            bestSeasonNZB = pickBestResult(foundResults[provider.name][SEASON_RESULT], show,
+        if SEASON_RESULT in foundResults[curProvider.name]:
+            bestSeasonNZB = pickBestResult(foundResults[curProvider.name][SEASON_RESULT], show,
                                            anyQualities + bestQualities)
 
         highest_quality_overall = 0
-        for cur_episode in foundResults[provider.name]:
-            for cur_result in foundResults[provider.name][cur_episode]:
+        for cur_episode in foundResults[curProvider.name]:
+            for cur_result in foundResults[curProvider.name][cur_episode]:
                 if cur_result.quality != Quality.UNKNOWN and cur_result.quality > highest_quality_overall:
                     highest_quality_overall = cur_result.quality
         logger.log(u"The highest quality of any match is " + Quality.qualityStrings[highest_quality_overall],
@@ -535,7 +523,6 @@ def searchProviders(show, season, episodes, type="wantEP", manualSearch=False):
         if bestSeasonNZB:
 
             # get the quality of the season nzb
-            seasonQual = Quality.sceneQuality(bestSeasonNZB.name)
             seasonQual = bestSeasonNZB.quality
             logger.log(
                 u"The quality of the season " + bestSeasonNZB.provider.providerType + " is " + Quality.qualityStrings[
@@ -596,10 +583,10 @@ def searchProviders(show, season, episodes, type="wantEP", manualSearch=False):
                         elif len(curResult.episodes) > 1:
                             epNum = MULTI_EP_RESULT
 
-                        if epNum in foundResults[provider.name]:
-                            foundResults[provider.name][epNum].append(curResult)
+                        if epNum in foundResults[curProvider.name]:
+                            foundResults[curProvider.name][epNum].append(curResult)
                         else:
-                            foundResults[provider.name][epNum] = [curResult]
+                            foundResults[curProvider.name][epNum] = [curResult]
 
                 # If this is a torrent all we can do is leech the entire torrent, user will have to select which eps not do download in his torrent client
                 else:
@@ -613,15 +600,15 @@ def searchProviders(show, season, episodes, type="wantEP", manualSearch=False):
                     bestSeasonNZB.episodes = epObjs
 
                     epNum = MULTI_EP_RESULT
-                    if epNum in foundResults[provider.name]:
-                        foundResults[provider.name][epNum].append(bestSeasonNZB)
+                    if epNum in foundResults[curProvider.name]:
+                        foundResults[curProvider.name][epNum].append(bestSeasonNZB)
                     else:
-                        foundResults[provider.name][epNum] = [bestSeasonNZB]
+                        foundResults[curProvider.name][epNum] = [bestSeasonNZB]
 
         # go through multi-ep results and see if we really want them or not, get rid of the rest
         multiResults = {}
-        if MULTI_EP_RESULT in foundResults[provider.name]:
-            for multiResult in foundResults[provider.name][MULTI_EP_RESULT]:
+        if MULTI_EP_RESULT in foundResults[curProvider.name]:
+            for multiResult in foundResults[curProvider.name][MULTI_EP_RESULT]:
 
                 logger.log(u"Seeing if we want to bother with multi-episode result " + multiResult.name, logger.DEBUG)
 
@@ -636,15 +623,10 @@ def searchProviders(show, season, episodes, type="wantEP", manualSearch=False):
                 for epObj in multiResult.episodes:
                     epNum = epObj.episode
                     # if we have results for the episode
-                    if epNum in foundResults[provider.name] and len(foundResults[provider.name][epNum]) > 0:
-                        # but the multi-ep is worse quality, we don't want it
-                        # TODO: wtf is this False for
-                        # if False and multiResult.quality <= pickBestResult(foundResults[epNum]):
-                        #    notNeededEps.append(epNum)
-                        #else:
+                    if epNum in foundResults[curProvider.name] and len(foundResults[curProvider.name][epNum]) > 0:
                         neededEps.append(epNum)
                     else:
-                        neededEps.append(epNum)
+                        notNeededEps.append(epNum)
 
                 logger.log(
                     u"Single-ep check result is neededEps: " + str(neededEps) + ", notNeededEps: " + str(notNeededEps),
@@ -682,22 +664,22 @@ def searchProviders(show, season, episodes, type="wantEP", manualSearch=False):
                 # don't bother with the single result if we're going to get it with a multi result
                 for epObj in multiResult.episodes:
                     epNum = epObj.episode
-                    if epNum in foundResults[provider.name]:
+                    if epNum in foundResults[curProvider.name]:
                         logger.log(
                             u"A needed multi-episode result overlaps with a single-episode result for ep #" + str(
                                 epNum) + ", removing the single-episode results from the list", logger.DEBUG)
-                        del foundResults[provider.name][epNum]
+                        del foundResults[curProvider.name][epNum]
 
         # of all the single ep results narrow it down to the best one for each episode
         finalResults += set(multiResults.values())
-        for curEp in foundResults[provider.name]:
+        for curEp in foundResults[curProvider.name]:
             if curEp in (MULTI_EP_RESULT, SEASON_RESULT):
                 continue
 
-            if len(foundResults[provider.name][curEp]) == 0:
+            if len(foundResults[curProvider.name][curEp]) == 0:
                 continue
 
-            bestResult = pickBestResult(foundResults[provider.name][curEp], show)
+            bestResult = pickBestResult(foundResults[curProvider.name][curEp], show)
 
             # if all results were rejected move on to the next episode
             if not bestResult:
@@ -723,7 +705,11 @@ def searchProviders(show, season, episodes, type="wantEP", manualSearch=False):
                     wantedEpCount += 1
 
         # make sure we search every provider for results unless we found everything we wanted
-        if providerNum == len(providers) or wantedEpCount == len(episodes):
+        if wantedEpCount == len(episodes):
             break
+
+    if not didSearch:
+        logger.log(u"No NZB/Torrent providers found or enabled in the sickbeard config for backlog searches. Please check your settings.",
+                   logger.ERROR)
 
     return finalResults

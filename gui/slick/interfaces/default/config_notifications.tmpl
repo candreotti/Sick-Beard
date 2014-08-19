@@ -1269,6 +1269,20 @@
                                 </label>
                             </div>
                             <div class="field-pair">
+                                <label class="nocheck clearfix" for="trakt_default_indexer">
+                                    <span class="component-title">Default Indexer:</span>
+                                    <span class="component-desc">
+                                        <select id="trakt_default_indexer" name="trakt_default_indexer">
+                                            #for $indexer in $sickbeard.indexerApi().indexers
+                                            <option value="$indexer" #if $indexer == $sickbeard.TRAKT_DEFAULT_INDEXER then "selected=\"selected\"" else ""#>$sickbeard.indexerApi().indexers[$indexer]</option>
+                                            #end for
+                                        </select>
+                                    </span>
+                                </label>
+                            </div
+                        </div>
+
+                            <div class="field-pair">
                                 <input type="checkbox" class="enabler" name="trakt_sync" id="trakt_sync" #if $sickbeard.TRAKT_SYNC then "checked=\"checked\"" else ""# />
                                 <label class="clearfix" for="trakt_sync">
                                     <span class="component-title">Sync Libraries:</span>
@@ -1289,7 +1303,7 @@
                                     <span class="component-desc">Gets new shows from the trakt watchlist</span>
                                 </label>
                             </div>
-				<div id="content_trakt_use_watchlist">
+							<div id="content_trakt_use_watchlist">
 	                            <div class="field-pair">
 	                                <label class="nocheck clearfix">
 	                                    <span class="component-title">Watchlist Add Method:</span>
@@ -1323,6 +1337,11 @@
 	                                    <span class="component-title">Add/Remove episode from Watchlist:</span>
 	                                    <span class="component-desc">Add/Remove an episode from the watchlist after it is downloaded</span>
 	                                </label>
+									<input type="checkbox" name="trakt_remove_serieslist" id="trakt_remove_serieslist" #if $sickbeard.TRAKT_REMOVE_SERIESLIST then "checked=\"checked\"" else ""# />
+	                                <label class="clearfix" for="trakt_remove_serieslist">
+	                                    <span class="component-title">Remove series:</span>
+	                                    <span class="component-desc">Remove the whole series from the watchlist after any download</span>
+	                                </label>
 	                            </div>
 	                            <div class="field-pair">
 	                                <input type="checkbox" name="trakt_start_paused" id="trakt_start_paused" #if $sickbeard.TRAKT_START_PAUSED then "checked=\"checked\"" else ""# />
@@ -1331,17 +1350,17 @@
 	                                    <span class="component-desc">Starts shows grabbed from trakt watchlist paused</span>
 	                                </label>
 	                            </div>
-                                    <div class="field-pair">
-                                        <label class="nocheck clearfix">
-                                            <span class="component-title">Trakt BlackList name</span>
-                                            <input type="text" name="trakt_blacklist_name" id="trakt_blacklist_name" value="$sickbeard.TRAKT_BLACKLIST_NAME" size="35" />
-                                        </label>
-                                        <label class="nocheck clearfix">
-                                            <span class="component-title">&nbsp;</span>
-                                            <span class="component-desc">Name(slug) of List on Traktv for blacklisting show on tranding page</span>
-                                        </label>
-                                    </div>
-				</div>
+                                <div class="field-pair">
+                                    <label class="nocheck clearfix">
+                                        <span class="component-title">Trakt BlackList name</span>
+                                        <input type="text" name="trakt_blacklist_name" id="trakt_blacklist_name" value="$sickbeard.TRAKT_BLACKLIST_NAME" size="35" />
+                                    </label>
+                                    <label class="nocheck clearfix">
+                                        <span class="component-title">&nbsp;</span>
+                                        <span class="component-desc">Name(slug) of List on Traktv for blacklisting show on tranding page</span>
+                                    </label>
+                                </div>
+                            </div>
                             <div class="testNotification" id="testTrakt-result">Click below to test.</div>
                             <input type="button" class="btn" value="Test Trakt" id="testTrakt" />
                             <input type="submit" class="btn config_submitter" value="Save Changes" />

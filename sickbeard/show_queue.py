@@ -372,6 +372,7 @@ class QueueItemAdd(ShowQueueItem):
 
         # if they started with WANTED eps then run the backlog
         if self.default_status == WANTED:
+            sickbeard.traktCheckerScheduler.action.updateWantedList(self.show.indexerid,True)
             logger.log(u"Launching backlog for this show since its episodes are WANTED")
             sickbeard.backlogSearchScheduler.action.searchBacklog([self.show])  #@UndefinedVariable
         # if they started with SKIPPED eps then run the downloadable search
@@ -393,6 +394,12 @@ class QueueItemAdd(ShowQueueItem):
             # add show to trakt.tv library
             if sickbeard.TRAKT_SYNC:
                 sickbeard.traktCheckerScheduler.action.addShowToTraktLibrary(self.show)
+
+            if sickbeard.TRAKT_REMOVE_SHOW_WATCHLIST:
+                if not sickbeard.traktCheckerScheduler.action.show_in_watchlist(self.show):
+                    logger.log(u"Show: tvdb_id " + str(self.show.indexerid) + ", Title " +  str(self.show.name) + " should be added to watchlist", logger.DEBUG)
+                    if not sickbeard.traktCheckerScheduler.action.update_watchlist("show", "add", self.show, 0, 0):
+                        return False
 
         # Load XEM data to DB for show
         sickbeard.scene_numbering.xem_refresh(self.show.indexerid, self.show.indexer, force=True)
@@ -433,10 +440,9 @@ class QueueItemRefresh(ShowQueueItem):
         self.show.populateCache()
 
         # Load XEM data to DB for show
-        sickbeard.scene_numbering.xem_refresh(self.show.indexerid, self.show.indexer, force=self.force)
+        sickbeard.scene_numbering.xem_refresh(self.show.indexerid, self.show.indexer)
 
         self.inProgress = False
-
 
 class QueueItemRename(ShowQueueItem):
     def __init__(self, show=None):

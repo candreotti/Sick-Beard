@@ -23,26 +23,24 @@ import os
 import time
 import urllib
 import datetime
-import threading
 import re
 import traceback
 import sickbeard
 import webserve
 
 from sickbeard import db, logger, exceptions, history, ui, helpers
-from sickbeard.exceptions import ex
 from sickbeard import encodingKludge as ek
 from sickbeard import search_queue
+from sickbeard import image_cache
+from sickbeard import classes
+from sickbeard.exceptions import ex
 from sickbeard.common import SNATCHED, SNATCHED_PROPER, DOWNLOADED, DOWNLOADABLE, SKIPPED, UNAIRED, IGNORED, ARCHIVED, WANTED, UNKNOWN
 from common import Quality, qualityPresetStrings, statusStrings
-from sickbeard import image_cache
 
 try:
     import json
 except ImportError:
     from lib import simplejson as json
-
-import xml.etree.cElementTree as etree
 
 from lib import subliminal
 
@@ -197,103 +195,103 @@ class Api(webserve.MainHandler):
             return False, msg, args, kwargs
 
 
-    def call_dispatcher(handler, args, kwargs):
-        """ calls the appropriate CMD class
+def call_dispatcher(handler, args, kwargs):
+    """ calls the appropriate CMD class
         looks for a cmd in args and kwargs
         or calls the TVDBShorthandWrapper when the first args element is a number
         or returns an error that there is no such cmd
-        """
-        logger.log(u"API :: all args: '" + str(args) + "'", logger.DEBUG)
-        logger.log(u"API :: all kwargs: '" + str(kwargs) + "'", logger.DEBUG)
-        #logger.log(u"API :: dateFormat: '" + str(dateFormat) + "'", logger.DEBUG)
+    """
+    logger.log(u"API :: all args: '" + str(args) + "'", logger.DEBUG)
+    logger.log(u"API :: all kwargs: '" + str(kwargs) + "'", logger.DEBUG)
+    # logger.log(u"API :: dateFormat: '" + str(dateFormat) + "'", logger.DEBUG)
 
-        cmds = None
-        if args:
-            cmds = args[0]
-            args = args[1:]
+    cmds = None
+    if args:
+        cmds = args[0]
+        args = args[1:]
 
-        if "cmd" in kwargs:
-            cmds = kwargs["cmd"]
-            del kwargs["cmd"]
+    if "cmd" in kwargs:
+        cmds = kwargs["cmd"]
+        del kwargs["cmd"]
 
-        outDict = {}
-        if cmds != None:
-            cmds = cmds.split("|")
-            multiCmds = bool(len(cmds) > 1)
-            for cmd in cmds:
-                curArgs, curKwargs = filter_params(cmd, args, kwargs)
-                cmdIndex = None
-                if len(cmd.split("_")) > 1:  # was a index used for this cmd ?
-                    cmd, cmdIndex = cmd.split("_")  # this gives us the clear cmd and the index
+    outDict = {}
+    if cmds != None:
+        cmds = cmds.split("|")
+        multiCmds = bool(len(cmds) > 1)
+        for cmd in cmds:
+            curArgs, curKwargs = filter_params(cmd, args, kwargs)
+            cmdIndex = None
+            if len(cmd.split("_")) > 1:  # was a index used for this cmd ?
+                cmd, cmdIndex = cmd.split("_")  # this gives us the clear cmd and the index
 
-                logger.log(u"API :: " + cmd + ": curKwargs " + str(curKwargs), logger.DEBUG)
-                if not (multiCmds and cmd in ('show.getposter', 'show.getbanner')):  # skip these cmd while chaining
-                    try:
-                        if cmd in _functionMaper:
-                            curOutDict = _functionMaper.get(cmd)(handler, curArgs,
+            logger.log(u"API :: " + cmd + ": curKwargs " + str(curKwargs), logger.DEBUG)
+            if not (multiCmds and cmd in ('show.getposter', 'show.getbanner')):  # skip these cmd while chaining
+                try:
+                    if cmd in _functionMaper:
+                        curOutDict = _functionMaper.get(cmd)(handler, curArgs,
                                                              curKwargs).run()  # get the cmd class, init it and run()
-                        elif _is_int(cmd):
-                            curOutDict = TVDBShorthandWrapper(handler, curArgs, curKwargs, cmd).run()
-                        else:
-                            curOutDict = _responds(RESULT_ERROR, "No such cmd: '" + cmd + "'")
-                    except ApiError, e:  # Api errors that we raised, they are harmless
-                        curOutDict = _responds(RESULT_ERROR, msg=ex(e))
-                else:  # if someone chained one of the forbiden cmds they will get an error for this one cmd
-                    curOutDict = _responds(RESULT_ERROR, msg="The cmd '" + cmd + "' is not supported while chaining")
-
-                if multiCmds:
-                    # note: if multiple same cmds are issued but one has not an index defined it will override all others
-                    # or the other way around, this depends on the order of the cmds
-                    # this is not a bug
-                    if cmdIndex is None:  # do we need a index dict for this cmd ?
-                        outDict[cmd] = curOutDict
+                    elif _is_int(cmd):
+                        curOutDict = TVDBShorthandWrapper(handler, curArgs, curKwargs, cmd).run()
                     else:
-                        if not cmd in outDict:
-                            outDict[cmd] = {}
-                        outDict[cmd][cmdIndex] = curOutDict
+                        curOutDict = _responds(RESULT_ERROR, "No such cmd: '" + cmd + "'")
+                except ApiError, e:  # Api errors that we raised, they are harmless
+                    curOutDict = _responds(RESULT_ERROR, msg=ex(e))
+            else:  # if someone chained one of the forbiden cmds they will get an error for this one cmd
+                curOutDict = _responds(RESULT_ERROR, msg="The cmd '" + cmd + "' is not supported while chaining")
+
+            if multiCmds:
+                # note: if multiple same cmds are issued but one has not an index defined it will override all others
+                # or the other way around, this depends on the order of the cmds
+                # this is not a bug
+                if cmdIndex is None:  # do we need a index dict for this cmd ?
+                    outDict[cmd] = curOutDict
                 else:
-                    outDict = curOutDict
+                    if not cmd in outDict:
+                        outDict[cmd] = {}
+                    outDict[cmd][cmdIndex] = curOutDict
+            else:
+                outDict = curOutDict
 
-            if multiCmds:  # if we had multiple cmds we have to wrap it in a response dict
-                outDict = _responds(RESULT_SUCCESS, outDict)
-            else:  # index / no cmd given
-                outDict = CMD_SickBeard(handler, args, kwargs).run()
+        if multiCmds:  # if we had multiple cmds we have to wrap it in a response dict
+            outDict = _responds(RESULT_SUCCESS, outDict)
+    else:  # index / no cmd given
+        outDict = CMD_SickBeard(handler, args, kwargs).run()
 
-        return outDict
+    return outDict
 
 
-    def filter_params(cmd, args, kwargs):
-        """ return only params kwargs that are for cmd
-            and rename them to a clean version (remove "<cmd>_")
-            args are shared across all cmds
-    
-            all args and kwarks are lowerd
-    
-            cmd are separated by "|" e.g. &cmd=shows|future
-            kwargs are namespaced with "." e.g. show.indexerid=101501
-            if a karg has no namespace asing it anyways (global)
-    
-            full e.g.
-            /api?apikey=1234&cmd=show.seasonlist_asd|show.seasonlist_2&show.seasonlist_asd.indexerid=101501&show.seasonlist_2.indexerid=79488&sort=asc
-    
-            two calls of show.seasonlist
-            one has the index "asd" the other one "2"
-            the "indexerid" kwargs / params have the indexed cmd as a namspace
-            and the kwarg / param "sort" is a used as a global
-        """
-        curArgs = []
-        for arg in args:
-            curArgs.append(arg.lower())
-        curArgs = tuple(curArgs)
+def filter_params(cmd, args, kwargs):
+    """ return only params kwargs that are for cmd
+        and rename them to a clean version (remove "<cmd>_")
+        args are shared across all cmds
 
-        curKwargs = {}
-        for kwarg in kwargs:
-            if kwarg.find(cmd + ".") == 0:
-                cleanKey = kwarg.rpartition(".")[2]
-                curKwargs[cleanKey] = kwargs[kwarg].lower()
-            elif not "." in kwarg:  # the kwarg was not namespaced therefore a "global"
-                curKwargs[kwarg] = kwargs[kwarg]
-        return curArgs, curKwargs
+        all args and kwarks are lowerd
+
+        cmd are separated by "|" e.g. &cmd=shows|future
+        kwargs are namespaced with "." e.g. show.indexerid=101501
+        if a karg has no namespace asing it anyways (global)
+
+        full e.g.
+        /api?apikey=1234&cmd=show.seasonlist_asd|show.seasonlist_2&show.seasonlist_asd.indexerid=101501&show.seasonlist_2.indexerid=79488&sort=asc
+
+        two calls of show.seasonlist
+        one has the index "asd" the other one "2"
+        the "indexerid" kwargs / params have the indexed cmd as a namspace
+        and the kwarg / param "sort" is a used as a global
+    """
+    curArgs = []
+    for arg in args:
+        curArgs.append(arg.lower())
+    curArgs = tuple(curArgs)
+
+    curKwargs = {}
+    for kwarg in kwargs:
+        if kwarg.find(cmd + ".") == 0:
+            cleanKey = kwarg.rpartition(".")[2]
+            curKwargs[cleanKey] = kwargs[kwarg].lower()
+        elif not "." in kwarg:  # the kwarg was not namespaced therefore a "global"
+            curKwargs[kwarg] = kwargs[kwarg]
+    return curArgs, curKwargs
 
 
 class ApiCall(object):
@@ -977,14 +975,14 @@ class CMD_EpisodeSetStatus(ApiCall):
 
         sql_l = []
         for epObj in ep_list:
-            if self.status == WANTED:
-                # figure out what episodes are wanted so we can backlog them
-                if epObj.season in ep_segment:
-                    ep_segment[epObj.season].append(epObj)
-                else:
-                    ep_segment[epObj.season] = [epObj]
-
             with epObj.lock:
+                if self.status == WANTED:
+                    # figure out what episodes are wanted so we can backlog them
+                    if epObj.season in ep_segment:
+                        ep_segment[epObj.season].append(epObj)
+                    else:
+                        ep_segment[epObj.season] = [epObj]
+
                 # don't let them mess up UNAIRED episodes
                 if epObj.status == UNAIRED:
                     if self.e != None:  # setting the status of a unaired is only considert a failure if we directly wanted this episode, but is ignored on a season request
@@ -1288,7 +1286,7 @@ class CMD_SickBeard(ApiCall):
 
     def run(self):
         """ display misc sickbeard related information """
-        data = {"sb_version": sickbeard.version.SICKBEARD_VERSION, "api_version": Api.version,
+        data = {"sb_version": sickbeard.BRANCH, "api_version": Api.version,
                 "api_commands": sorted(_functionMaper.keys())}
         return _responds(RESULT_SUCCESS, data)
 
@@ -1532,7 +1530,7 @@ class CMD_SickBeardRestart(ApiCall):
 class CMD_SickBeardSearchIndexers(ApiCall):
     _help = {"desc": "search for show on the indexers with a given string and language",
              "optionalParameters": {"name": {"desc": "name of the show you want to search for"},
-                                    "indexerid": {"desc": "thetvdb.com unique id of a show"},
+                                    "indexerid": {"desc": "thetvdb.com or tvrage.com unique id of a show"},
                                     "lang": {"desc": "the 2 letter abbreviation lang id"}
              }
     }
@@ -1557,31 +1555,30 @@ class CMD_SickBeardSearchIndexers(ApiCall):
     def run(self):
         """ search for show at tvdb with a given string and language """
         if self.name and not self.indexerid:  # only name was given
-            baseURL = "http://thetvdb.com/api/GetSeries.php?"
-            params = {"seriesname": str(self.name).encode('utf-8'), 'language': self.lang}
-            finalURL = baseURL + urllib.urlencode(params)
-            urlData = sickbeard.helpers.getURL(finalURL)
+            lINDEXER_API_PARMS = sickbeard.indexerApi(self.indexer).api_params.copy()
+            lINDEXER_API_PARMS['language'] = self.lang
+            lINDEXER_API_PARMS['custom_ui'] = classes.AllShowsListUI
+            t = sickbeard.indexerApi(self.indexer).indexer(**lINDEXER_API_PARMS)
 
-            if urlData is None:
+            apiData = None
+
+            try:
+                apiData = t[str(self.name).encode()]
+            except Exception, e:
+                pass
+
+            if not apiData:
                 return _responds(RESULT_FAILURE, msg="Did not get result from tvdb")
-            else:
-                try:
-                    seriesXML = etree.ElementTree(etree.XML(urlData))
-                except Exception, e:
-                    logger.log(u"API :: Unable to parse XML for some reason: " + ex(e) + " from XML: " + urlData,
-                               logger.ERROR)
-                    return _responds(RESULT_FAILURE, msg="Unable to read result from tvdb")
 
-                series = seriesXML.getiterator('Series')
-                results = []
-                for curSeries in series:
-                    results.append({"indexerid": int(curSeries.findtext('seriesid')),
-                                    "tvdbid": int(curSeries.findtext('seriesid')),
-                                    "name": curSeries.findtext('SeriesName'),
-                                    "first_aired": curSeries.findtext('FirstAired')})
+            results = []
+            for curSeries in apiData:
+                results.append({"indexerid": int(curSeries.findtext('seriesid')),
+                                "tvdbid": int(curSeries.findtext('seriesid')),
+                                "name": curSeries.findtext('SeriesName'),
+                                "first_aired": curSeries.findtext('FirstAired')})
 
-                lang_id = self.valid_languages[self.lang]
-                return _responds(RESULT_SUCCESS, {"results": results, "langid": lang_id})
+            lang_id = self.valid_languages[self.lang]
+            return _responds(RESULT_SUCCESS, {"results": results, "langid": lang_id})
 
         elif self.indexerid:
             lINDEXER_API_PARMS = sickbeard.indexerApi(self.indexer).api_params.copy()
@@ -1755,7 +1752,7 @@ class CMD_Show(ApiCall):
         showDict["anime"] = showObj.anime
         #clean up tvdb horrible airs field
         showDict["airs"] = str(showObj.airs).replace('am', ' AM').replace('pm', ' PM').replace('  ', ' ')
-        showDict["tvrage_id"] = helpers.mapIndexersToShow(showObj)['tvrage_id']
+        showDict["tvrage_id"] = helpers.mapIndexersToShow(showObj)[2]
         showDict["tvrage_name"] = showObj.name
         showDict["network"] = showObj.network
         if not showDict["network"]:
@@ -2532,8 +2529,8 @@ class CMD_Shows(ApiCall):
                 "sports": curShow.sports,
                 "anime": curShow.anime,
                 "indexerid": curShow.indexerid,
-                "tvdbid": helpers.mapIndexersToShow(curShow)['tvdb_id'],
-                "tvrage_id": helpers.mapIndexersToShow(curShow)['tvrage_id'],
+                "tvdbid": helpers.mapIndexersToShow(curShow)[1],
+                "tvrage_id": helpers.mapIndexersToShow(curShow)[2],
                 "tvrage_name": curShow.name,
                 "network": curShow.network,
                 "show_name": curShow.name,

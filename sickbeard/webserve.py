@@ -17,21 +17,19 @@
 # along with Sick Beard.  If not, see <http://www.gnu.org/licenses/>.
 
 from __future__ import with_statement
+
 import base64
 import inspect
 import traceback
-import urlparse
 
 import os
 
 import time
 import urllib
 import re
-import threading
 import datetime
 import random
 import sys
-import operator
 from copy import deepcopy
 
 import sickbeard
@@ -82,8 +80,7 @@ except ImportError:
 from lib import adba
 
 from Cheetah.Template import Template
-
-from tornado.web import RequestHandler, HTTPError
+from tornado.web import RequestHandler, HTTPError, asynchronous
 
 
 def authenticated(handler_class):
@@ -148,6 +145,7 @@ def redirect(url, permanent=False, status=None):
     assert url[0] == '/'
     raise HTTPRedirect(sickbeard.WEB_ROOT + url, permanent, status)
 
+
 @authenticated
 class MainHandler(RequestHandler):
     def http_error_401_handler(self):
@@ -191,7 +189,6 @@ class MainHandler(RequestHandler):
                                              trace_info, request_info))
 
     def _dispatch(self):
-
         path = self.request.uri.replace(sickbeard.WEB_ROOT, '').split('?')[0]
 
         method = path.strip('/').split('/')[-1]
@@ -237,12 +234,14 @@ class MainHandler(RequestHandler):
 
         raise HTTPError(404)
 
+    @asynchronous
     def get(self, *args, **kwargs):
         try:
             self.finish(self._dispatch())
         except HTTPRedirect, e:
             self.redirect(e.url, e.permanent, e.status)
 
+    @asynchronous
     def post(self, *args, **kwargs):
         try:
             self.finish(self._dispatch())
@@ -417,10 +416,6 @@ class MainHandler(RequestHandler):
         """
 
         logger.log(u"Receiving iCal request from %s" % self.request.remote_ip)
-
-        poster_url = self.request.url().replace('ical', '')
-
-        time_re = re.compile('([0-9]{1,2})\:([0-9]{2})(\ |)([AM|am|PM|pm]{2})')
 
         # Create a iCal string
         ical = 'BEGIN:VCALENDAR\r\n'
@@ -609,6 +604,13 @@ class ManageSearches(MainHandler):
 
         return _munge(t)
 
+
+    def forceVersionCheck(self, *args, **kwargs):
+        # force a check to see if there is a new version
+        if sickbeard.versionCheckScheduler.action.check_for_new_version(force=True):
+            logger.log(u"Forcing version check")
+
+        redirect("/home/")
 
     def forceBacklog(self, *args, **kwargs):
         # force it to run the next time it looks
@@ -897,6 +899,7 @@ class Manage(MainHandler):
 
         redirect("/manage/backlogOverview/")
 
+
     def backlogOverview(self, *args, **kwargs):
 
         t = PageTemplate(headers=self.request.headers, file="manage_backlogOverview.tmpl")
@@ -965,6 +968,9 @@ class Manage(MainHandler):
         anime_all_same = True
         last_anime = None
 
+        sports_all_same = True
+        last_sports = None
+
         quality_all_same = True
         last_quality = None
 
@@ -973,6 +979,9 @@ class Manage(MainHandler):
 
         scene_all_same = True
         last_scene = None
+
+        air_by_date_all_same = True
+        last_air_by_date = None
 
         root_dir_list = []
 
@@ -985,17 +994,17 @@ class Manage(MainHandler):
             # if we know they're not all the same then no point even bothering
             if paused_all_same:
                 # if we had a value already and this value is different then they're not all the same
-                if last_paused not in (curShow.paused, None):
+                if last_paused not in (None, curShow.paused):
                     paused_all_same = False
                 else:
                     last_paused = curShow.paused
 
             if anime_all_same:
                 # if we had a value already and this value is different then they're not all the same
-                if last_anime not in (curShow.is_anime, None):
+                if last_anime not in (None, curShow.is_anime):
                     anime_all_same = False
                 else:
-                    last_anime = curShow.is_anime
+                    last_anime = curShow.anime
 
             if flatten_folders_all_same:
                 if last_flatten_folders not in (None, curShow.flatten_folders):
@@ -1021,6 +1030,18 @@ class Manage(MainHandler):
                 else:
                     last_scene = curShow.scene
 
+            if sports_all_same:
+                if last_sports not in (None, curShow.sports):
+                    sports_all_same = False
+                else:
+                    last_sports = curShow.sports
+
+            if air_by_date_all_same:
+                if last_air_by_date not in (None, curShow.air_by_date):
+                    air_by_date_all_same = False
+                else:
+                    last_air_by_date = curShow.air_by_date
+
         t.showList = toEdit
         t.paused_value = last_paused if paused_all_same else None
         t.anime_value = last_anime if anime_all_same else None
@@ -1028,14 +1049,15 @@ class Manage(MainHandler):
         t.quality_value = last_quality if quality_all_same else None
         t.subtitles_value = last_subtitles if subtitles_all_same else None
         t.scene_value = last_scene if scene_all_same else None
+        t.sports_value = last_sports if sports_all_same else None
+        t.air_by_date_value = last_air_by_date if air_by_date_all_same else None
         t.root_dir_list = root_dir_list
 
         return _munge(t)
 
 
-    def massEditSubmit(self, paused=None, anime=None, scene=None, flatten_folders=None, quality_preset=False,
-                       subtitles=None,
-                       anyQualities=[], bestQualities=[], toEdit=None, *args, **kwargs):
+    def massEditSubmit(self, paused=None, anime=None, sports=None, scene=None, flatten_folders=None, quality_preset=False,
+                       subtitles=None, air_by_date=None, anyQualities=[], bestQualities=[], toEdit=None, *args, **kwargs):
 
         dir_map = {}
         for cur_arg in kwargs:
@@ -1069,16 +1091,28 @@ class Manage(MainHandler):
             new_paused = 'on' if new_paused else 'off'
 
             if anime == 'keep':
-                new_anime = showObj.is_anime
+                new_anime = showObj.anime
             else:
                 new_anime = True if anime == 'enable' else False
             new_anime = 'on' if new_anime else 'off'
+
+            if sports == 'keep':
+                new_sports = showObj.sports
+            else:
+                new_sports = True if sports == 'enable' else False
+            new_sports = 'on' if new_sports else 'off'
 
             if scene == 'keep':
                 new_scene = showObj.is_scene
             else:
                 new_scene = True if scene == 'enable' else False
             new_scene = 'on' if new_scene else 'off'
+
+            if air_by_date == 'keep':
+                new_air_by_date = showObj.air_by_date
+            else:
+                new_air_by_date = True if air_by_date == 'enable' else False
+            new_air_by_date = 'on' if new_air_by_date else 'off'
 
             if flatten_folders == 'keep':
                 new_flatten_folders = showObj.flatten_folders
@@ -1098,12 +1132,12 @@ class Manage(MainHandler):
 
             exceptions_list = []
 
-            curErrors += Home(self.application, self.request).editShow(curShow, new_show_dir, anyQualities,
-                                                                       bestQualities, exceptions_list,
+            curErrors += Home(self.application, self.request).editShow(curShow, new_show_dir, anyQualities, bestQualities, exceptions_list,
                                                                        flatten_folders=new_flatten_folders,
-                                                                       paused=new_paused,
+                                                                       paused=new_paused, sports=new_sports,
                                                                        subtitles=new_subtitles, anime=new_anime,
-                                                                       scene=new_scene, directCall=True)
+                                                                       scene=new_scene, air_by_date=new_air_by_date,
+                                                                       directCall=True)
 
             if curErrors:
                 logger.log(u"Errors: " + str(curErrors), logger.ERROR)
@@ -1224,6 +1258,7 @@ class Manage(MainHandler):
                                      messageDetail)
 
         redirect("/manage/")
+
 
     def manageTorrents(self, *args, **kwargs):
 
@@ -1447,8 +1482,7 @@ class ConfigGeneral(MainHandler):
                     use_api=None, api_key=None, indexer_default=None, timezone_display=None, cpu_preset=None,
                     web_password=None, version_notify=None, enable_https=None, https_cert=None, https_key=None,
                     handle_reverse_proxy=None, sort_article=None, auto_update=None, notify_on_update=None,
-                    proxy_setting=None,
-                    anon_redirect=None, git_path=None, calendar_unprotected=None,
+                    proxy_setting=None, anon_redirect=None, git_path=None, calendar_unprotected=None,
                     fuzzy_dating=None, trim_zero=None, date_preset=None, date_preset_na=None, time_preset=None,
                     indexer_timeout=None, play_videos=None):
 
@@ -1527,6 +1561,8 @@ class ConfigGeneral(MainHandler):
         else:
             ui.notifications.message('Configuration Saved', ek.ek(os.path.join, sickbeard.CONFIG_FILE))
 
+        redirect("/config/general/")
+
 
 class ConfigBackupRestore(MainHandler):
     def index(self, *args, **kwargs):
@@ -1555,7 +1591,6 @@ class ConfigBackupRestore(MainHandler):
 
 
     def restore(self, backupFile=None):
-
 
         finalResult = ''
 
@@ -1655,6 +1690,8 @@ class ConfigSearch(MainHandler):
                                    '<br />\n'.join(results))
         else:
             ui.notifications.message('Configuration Saved', ek.ek(os.path.join, sickbeard.CONFIG_FILE))
+
+        redirect("/config/search/")
 
 
 class ConfigPostProcessing(MainHandler):
@@ -1761,6 +1798,7 @@ class ConfigPostProcessing(MainHandler):
         else:
             ui.notifications.message('Configuration Saved', ek.ek(os.path.join, sickbeard.CONFIG_FILE))
 
+        redirect("/config/postProcessing/")
 
     def testNaming(self, pattern=None, multi=None, abd=False, sports=False, anime_type=None):
 
@@ -2218,6 +2256,8 @@ class ConfigProviders(MainHandler):
         else:
             ui.notifications.message('Configuration Saved', ek.ek(os.path.join, sickbeard.CONFIG_FILE))
 
+        redirect("/config/providers/")
+
 
 class ConfigNotifications(MainHandler):
     def index(self, *args, **kwargs):
@@ -2253,6 +2293,7 @@ class ConfigNotifications(MainHandler):
                           use_trakt=None, trakt_username=None, trakt_password=None, trakt_api=None,
                           trakt_remove_watchlist=None, trakt_remove_show_watchlist=None, trakt_use_watchlist=None, trakt_method_add=None,
                           trakt_start_paused=None, trakt_blacklist_name=None, trakt_num_ep=None, trakt_use_recommended=None, trakt_sync=None,
+                          trakt_default_indexer=None, trakt_remove_serieslist=None,
                           use_synologynotifier=None, synologynotifier_notify_onsnatch=None,
                           synologynotifier_notify_ondownload=None, synologynotifier_notify_ondownloadable=None, synologynotifier_notify_onsubtitledownload=None,
                           use_pytivo=None, pytivo_notify_onsnatch=None, pytivo_notify_ondownload=None, pytivo_notify_ondownloadable=None,
@@ -2370,6 +2411,7 @@ class ConfigNotifications(MainHandler):
         sickbeard.TRAKT_API = trakt_api
         sickbeard.TRAKT_REMOVE_SHOW_WATCHLIST = config.checkbox_to_value(trakt_remove_show_watchlist)
         sickbeard.TRAKT_REMOVE_WATCHLIST = config.checkbox_to_value(trakt_remove_watchlist)
+        sickbeard.TRAKT_REMOVE_SERIESLIST = config.checkbox_to_value(trakt_remove_serieslist)
         sickbeard.TRAKT_USE_WATCHLIST = config.checkbox_to_value(trakt_use_watchlist)
         sickbeard.TRAKT_METHOD_ADD = trakt_method_add
         sickbeard.TRAKT_START_PAUSED = config.checkbox_to_value(trakt_start_paused)
@@ -2377,6 +2419,7 @@ class ConfigNotifications(MainHandler):
         sickbeard.TRAKT_USE_RECOMMENDED = config.checkbox_to_value(trakt_use_recommended)
         sickbeard.TRAKT_SYNC = config.checkbox_to_value(trakt_sync)
         sickbeard.TRAKT_NUM_EP = config.to_int(trakt_num_ep)
+        sickbeard.TRAKT_DEFAULT_INDEXER = int(trakt_default_indexer)
 
         if sickbeard.USE_TRAKT:
             sickbeard.traktCheckerScheduler.silent = False
@@ -2439,6 +2482,8 @@ class ConfigNotifications(MainHandler):
         else:
             ui.notifications.message('Configuration Saved', ek.ek(os.path.join, sickbeard.CONFIG_FILE))
 
+        redirect("/config/notifications/")
+
 
 class ConfigSubtitles(MainHandler):
     def index(self, *args, **kwargs):
@@ -2495,6 +2540,8 @@ class ConfigSubtitles(MainHandler):
         else:
             ui.notifications.message('Configuration Saved', ek.ek(os.path.join, sickbeard.CONFIG_FILE))
 
+        redirect("/config/subtitles/")
+
 
 class ConfigAnime(MainHandler):
     def index(self, *args, **kwargs):
@@ -2509,26 +2556,11 @@ class ConfigAnime(MainHandler):
 
         results = []
 
-        if use_anidb == "on":
-            use_anidb = 1
-        else:
-            use_anidb = 0
-
-        if anidb_use_mylist == "on":
-            anidb_use_mylist = 1
-        else:
-            anidb_use_mylist = 0
-
-        if split_home == "on":
-            split_home = 1
-        else:
-            split_home = 0
-
-        sickbeard.USE_ANIDB = use_anidb
+        sickbeard.USE_ANIDB = config.checkbox_to_value(use_anidb)
         sickbeard.ANIDB_USERNAME = anidb_username
         sickbeard.ANIDB_PASSWORD = anidb_password
-        sickbeard.ANIDB_USE_MYLIST = anidb_use_mylist
-        sickbeard.ANIME_SPLIT_HOME = split_home
+        sickbeard.ANIDB_USE_MYLIST = config.checkbox_to_value(anidb_use_mylist)
+        sickbeard.ANIME_SPLIT_HOME = config.checkbox_to_value(split_home)
 
         sickbeard.save_config()
 
@@ -2539,6 +2571,8 @@ class ConfigAnime(MainHandler):
                                    '<br />\n'.join(results))
         else:
             ui.notifications.message('Configuration Saved', ek.ek(os.path.join, sickbeard.CONFIG_FILE))
+
+        redirect("/config/anime/")
 
 
 class Config(MainHandler):
@@ -2595,16 +2629,8 @@ class HomePostProcess(MainHandler):
         t.submenu = HomeMenu()
         return _munge(t)
 
-
-    def forceVersionCheck(self, *args, **kwargs):
-
-        # force a check to see if there is a new version
-        if sickbeard.versionCheckScheduler.action.check_for_new_version(force=True):
-            logger.log(u"Forcing version check")
-
-        redirect("/home/")
-
-    def processEpisode(self, dir=None, nzbName=None, jobName=None, quiet=None, process_method=None, force=None, is_priority=None, failed="0", type="auto", *args, **kwargs):
+    def processEpisode(self, dir=None, nzbName=None, jobName=None, quiet=None, process_method=None, force=None,
+                       is_priority=None, failed="0", type="auto", *args, **kwargs):
 
         if failed == "0":
             failed = False
@@ -2673,7 +2699,7 @@ class NewHomeAddShows(MainHandler):
             t = sickbeard.indexerApi(indexer).indexer(**lINDEXER_API_PARMS)
 
             logger.log("Searching for Show with searchterm: %s on Indexer: %s" % (
-            search_term, sickbeard.indexerApi(indexer).name), logger.DEBUG)
+                search_term, sickbeard.indexerApi(indexer).name), logger.DEBUG)
             try:
                 # add search results
                 results.setdefault(indexer, []).extend(t[search_term])
@@ -2747,18 +2773,17 @@ class NewHomeAddShows(MainHandler):
                 indexer_id = show_name = indexer = None
                 for cur_provider in sickbeard.metadata_provider_dict.values():
                     (indexer_id, show_name, indexer) = cur_provider.retrieveShowMetadata(cur_path)
-                    if show_name: break
 
-                # default to TVDB if indexer was not detected
-                if show_name and not (indexer and indexer_id):
-                    (sn, idx, id) = helpers.searchIndexerForShowID(show_name, indexer, indexer_id)
+                    # default to TVDB if indexer was not detected
+                    if show_name and not (indexer or indexer_id):
+                        (sn, idx, id) = helpers.searchIndexerForShowID(show_name, indexer, indexer_id)
 
-                    # set indexer and indexer_id from found info
-                    if indexer is None and idx:
-                        indexer = idx
+                        # set indexer and indexer_id from found info
+                        if not indexer and idx:
+                            indexer = idx
 
-                    if indexer_id is None and id:
-                        indexer_id = id
+                        if not indexer_id and id:
+                            indexer_id = id
 
                 cur_dir['existing_info'] = (indexer_id, show_name, indexer)
 
@@ -2827,15 +2852,18 @@ class NewHomeAddShows(MainHandler):
         final_results = []
 
         logger.log(u"Getting recommended shows from Trakt.tv", logger.DEBUG)
-        recommendedlist = TraktCall("recommendations/shows.json/%API%/" + sickbeard.TRAKT_USERNAME,
-                                    sickbeard.TRAKT_API,
-                                    sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_PASSWORD)
+        recommendedlist = TraktCall("recommendations/shows.json/%API%", sickbeard.TRAKT_API, sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_PASSWORD)
+        
+        if recommendedlist == 'NULL':
+            logger.log(u"No shows found in your recommendedlist, aborting recommendedlist update", logger.DEBUG)
+            return
+
         if recommendedlist is None:
             logger.log(u"Could not connect to trakt service, aborting recommended list update", logger.ERROR)
             return
 
         map(final_results.append,
-            ([int(show['tvdb_id']), show['url'], show['title'], show['overview'],
+            ([int(show['tvdb_id'] or 0) if sickbeard.TRAKT_DEFAULT_INDEXER == 1 else int(show['tvdb_id'] or 0), show['url'], show['title'], show['overview'],
               datetime.date.fromtimestamp(int(show['first_aired']) / 1000.0).strftime('%Y%m%d')] for show in
              recommendedlist if not helpers.findCertainShow(sickbeard.showList, indexerid=int(show['tvdb_id']))))
 
@@ -3577,6 +3605,10 @@ class Home(MainHandler):
             return self._genericMessage("Update Failed",
                                         "Update wasn't successful, not restarting. Check your log for more information.")
 
+    def branchCheckout(self, branch):
+        sickbeard.BRANCH = branch
+        ui.notifications.message('Checking out branch: ', branch)
+        return self.update(sickbeard.PID)
 
     def displayShow(self, show=None):
 
@@ -3748,12 +3780,14 @@ class Home(MainHandler):
 
         showObj = sickbeard.helpers.findCertainShow(sickbeard.showList, int(show))
 
-        if showObj is None:
+        if not showObj:
             errString = "Unable to find the specified show: " + str(show)
             if directCall:
                 return [errString]
             else:
                 return self._genericMessage("Error", errString)
+
+        showObj.exceptions = scene_exceptions.get_scene_exceptions(showObj.indexerid)
 
         if not location and not anyQualities and not bestQualities and not flatten_folders:
             t = PageTemplate(headers=self.request.headers, file="editShow.tmpl")
@@ -3785,14 +3819,11 @@ class Home(MainHandler):
 
             with showObj.lock:
                 t.show = showObj
-
-            t.scene_exceptions = get_scene_exceptions(showObj.indexerid)
+                t.scene_exceptions = get_scene_exceptions(showObj.indexerid)
 
             return _munge(t)
 
         flatten_folders = config.checkbox_to_value(flatten_folders)
-        logger.log(u"flatten folders: " + str(flatten_folders))
-
         dvdorder = config.checkbox_to_value(dvdorder)
         archive_firstmatch = config.checkbox_to_value(archive_firstmatch)
         paused = config.checkbox_to_value(paused)
@@ -3810,15 +3841,10 @@ class Home(MainHandler):
         else:
             do_update = True
 
-        if scene == showObj.scene:
+        if scene == showObj.scene and anime == showObj.anime:
             do_update_scene_numbering = False
         else:
             do_update_scene_numbering = True
-
-        if anime == showObj.anime:
-            do_update_scene_absolute_numbering = False
-        else:
-            do_update_scene_absolute_numbering = True
 
         if type(anyQualities) != list:
             anyQualities = [anyQualities]
@@ -3829,7 +3855,7 @@ class Home(MainHandler):
         if type(exceptions_list) != list:
             exceptions_list = [exceptions_list]
 
-        # If directCall from mass_edit_update no scene exceptions handling
+        # If directCall from mass_edit_update no scene exceptions handling or blackandwhite list handling
         if directCall:
             do_update_exceptions = False
             do_downloadable_search = False
@@ -3839,8 +3865,6 @@ class Home(MainHandler):
             else:
                 do_update_exceptions = True
 
-        # If directCall from mass_edit_update no scene exceptions handling
-        if not directCall:
             if showObj.is_anime:
                 bwl = BlackAndWhiteList(showObj.indexerid)
                 if whitelist:
@@ -3908,37 +3932,18 @@ class Home(MainHandler):
                 except exceptions.CantRefreshException, e:
                     errors.append("Unable to refresh this show: " + ex(e))
 
-            if showObj.paused != paused:
-                showObj.paused = paused
+            showObj.paused = paused
+            showObj.scene = scene
+            showObj.anime = anime
+            showObj.sports = sports
+            showObj.subtitles = subtitles
+            showObj.air_by_date = air_by_date
 
-            if showObj.air_by_date != air_by_date:
-                showObj.air_by_date = air_by_date
-
-            if showObj.scene != scene:
-                showObj.scene = scene
-
-            if showObj.sports != sports:
-                showObj.sports = sports
-
-            if showObj.anime != anime:
-                showObj.anime = anime
-
-            if showObj.subtitles != subtitles:
-                showObj.subtitles = subtitles
-
-            if showObj.lang != indexer_lang:
+            if not directCall:
                 showObj.lang = indexer_lang
-
-            if showObj.dvdorder != dvdorder:
                 showObj.dvdorder = dvdorder
-
-            if showObj.archive_firstmatch != archive_firstmatch:
                 showObj.archive_firstmatch = archive_firstmatch
-
-            if rls_ignore_words is not None and showObj.rls_ignore_words != rls_ignore_words.strip():
                 showObj.rls_ignore_words = rls_ignore_words.strip()
-
-            if rls_require_words is not None and showObj.rls_require_words != rls_require_words.strip():
                 showObj.rls_require_words = rls_require_words.strip()
 
             # if we change location clear the db of episodes, change it, write to db, and rescan
@@ -3951,7 +3956,7 @@ class Home(MainHandler):
                 elif not do_update:
                     # change it
                     try:
-                        showObj._location = location
+                        showObj.location = location
                         try:
                             sickbeard.showQueueScheduler.action.refreshShow(showObj)  # @UndefinedVariable
                         except exceptions.CantRefreshException, e:
@@ -3976,8 +3981,8 @@ class Home(MainHandler):
 
         if do_update_exceptions:
             try:
-                scene_exceptions.update_scene_exceptions(showObj.indexerid, exceptions_list)  # @UndefinedVariable
-                showObj.exceptions = scene_exceptions.get_scene_exceptions(showObj.indexerid)
+                scene_exceptions.update_scene_exceptions(showObj.indexerid, exceptions_list)  # @UndefinedVdexerid)
+                do_downloadable_search = True
                 time.sleep(cpu_presets[sickbeard.CPU_PRESET])
             except exceptions.CantUpdateException, e:
                 errors.append("Unable to force an update on scene exceptions of the show.")
@@ -3993,7 +3998,7 @@ class Home(MainHandler):
             if not sickbeard.traktCheckerScheduler.action.updateWantedList():
                 errors.append("Unable to force an update on wanted episode")
 
-        if do_update_scene_numbering or do_update_scene_absolute_numbering:
+        if do_update_scene_numbering:
             try:
                 sickbeard.scene_numbering.xem_refresh(showObj.indexerid, showObj.indexer)  # @UndefinedVariable
                 time.sleep(cpu_presets[sickbeard.CPU_PRESET])

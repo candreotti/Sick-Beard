@@ -74,8 +74,7 @@ class NewznabProvider(generic.NZBProvider):
             int(self.enabled)) + '|' + self.search_mode + '|' + str(int(self.search_fallback))
 
     def imageName(self):
-        if ek.ek(os.path.isfile,
-                 ek.ek(os.path.join, sickbeard.PROG_DIR, 'gui', 'slick', 'images', 'providers', self.getID() + '.png')):
+        if ek.ek(os.path.isfile, ek.ek(os.path.join, sickbeard.PROG_DIR, 'gui', sickbeard.GUI_NAME, 'images', 'providers', self.getID() + '.png')):
             return self.getID() + '.png'
         return 'newznab.png'
 
@@ -98,9 +97,9 @@ class NewznabProvider(generic.NZBProvider):
             cur_params['season'] = str(ep_obj.scene_season)
 
         # search
-        indexers = helpers.mapIndexersToShow(ep_obj.show)
-        if indexers['tvrage_id']:
-            cur_params['rid'] = indexers['tvrage_id']
+        rid = helpers.mapIndexersToShow(ep_obj.show)[2]
+        if rid:
+            cur_params['rid'] = rid
             to_return.append(cur_params)
         else:
             # add new query strings for exceptions
@@ -131,9 +130,9 @@ class NewznabProvider(generic.NZBProvider):
             params['ep'] = ep_obj.scene_episode
 
         # search
-        indexers = helpers.mapIndexersToShow(ep_obj.show)
-        if indexers['tvrage_id']:
-            params['rid'] = indexers['tvrage_id']
+        rid = helpers.mapIndexersToShow(ep_obj.show)[2]
+        if rid:
+            params['rid'] = rid
             to_return.append(params)
         else:
             # add new query strings for exceptions

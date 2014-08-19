@@ -22,12 +22,8 @@ import platform
 import re
 import uuid
 
-from sickbeard import version
-
 INSTANCE_ID = str(uuid.uuid1())
-USER_AGENT = ('Sick Beard/alpha2-' + version.SICKBEARD_VERSION.replace(' ', '-') +
-              ' (' + platform.system() + '; ' + platform.release() +
-              '; ' + INSTANCE_ID + ')')
+USER_AGENT = ('Sick Beard/alpha2-(' + platform.system() + '; ' + platform.release() + '; ' + INSTANCE_ID + ')')
 
 mediaExtensions = ['avi', 'mkv', 'mpg', 'mpeg', 'wmv',
                    'ogm', 'mp4', 'iso', 'img', 'divx',
@@ -269,8 +265,8 @@ class Quality:
         return (status, Quality.NONE)
 
     @staticmethod
-    def statusFromName(name, assume=True):
-        quality = Quality.nameQuality(name)
+    def statusFromName(name, assume=True, anime=False):
+        quality = Quality.nameQuality(name, anime)
         if assume and quality == Quality.UNKNOWN:
             quality = Quality.assumeQuality(name)
         return Quality.compositeStatus(DOWNLOADED, quality)

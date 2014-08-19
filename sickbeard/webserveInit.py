@@ -141,11 +141,10 @@ class SRWebServer(threading.Thread):
     def run(self):
         if self.enable_https:
             protocol = "https"
-            self.server = HTTPServer(self.app, no_keep_alive=True,
-                                     ssl_options={"certfile": self.https_cert, "keyfile": self.https_key})
+            self.server = HTTPServer(self.app, ssl_options={"certfile": self.https_cert, "keyfile": self.https_key})
         else:
             protocol = "http"
-            self.server = HTTPServer(self.app, no_keep_alive=True)
+            self.server = HTTPServer(self.app)
 
         logger.log(u"Starting SickBeard on " + protocol + "://" + str(self.options['host']) + ":" + str(
             self.options['port']) + "/")
@@ -169,7 +168,5 @@ class SRWebServer(threading.Thread):
     def shutDown(self):
         self.alive = False
         if self.server:
-            logger.log("Shutting down tornado")
             self.server.stop()
             self.io_loop.stop()
-            self.join()

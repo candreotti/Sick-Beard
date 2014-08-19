@@ -110,6 +110,7 @@ class PushbulletNotifier:
         response = http_handler.getresponse()
         request_body = response.read()
         request_status = response.status
+        logger.log(u"Pushbullet response: %s" % request_body, logger.DEBUG)
 
         if request_status == 200:
             if testMessage:

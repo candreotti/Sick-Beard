@@ -11,7 +11,7 @@
 # Sick Beard is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#  GNU General Public License for more details.
+# GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
 # along with Sick Beard.  If not, see <http://www.gnu.org/licenses/>.
@@ -27,7 +27,6 @@ from sickbeard import logger
 from sickbeard.common import Quality
 from sickbeard import tvcache
 
-REMOTE_DBG = False
 
 class NyaaProvider(generic.TorrentProvider):
     def __init__(self):
@@ -64,45 +63,44 @@ class NyaaProvider(generic.TorrentProvider):
     def _get_episode_search_strings(self, ep_obj, add_string=''):
         return self._get_season_search_strings(ep_obj)
 
-    def _doSearch(self, search_string, show=None, age=None):
+    def _doSearch(self, search_string, search_mode='eponly', epcount=0, age=0):
         if self.show and not self.show.is_anime:
             logger.log(u"" + str(self.show.name) + " is not an anime skiping " + str(self.name))
             return []
 
-        params = {"term": search_string.encode('utf-8'),
-                  "cats": '1_37',  #Limit to English-translated Anime (for now)
-                  "sort": '2',  #Sort Descending By Seeders
+        params = {
+            "term": search_string.encode('utf-8'),
+            "cats": '1_37',  # Limit to English-translated Anime (for now)
+            "sort": '2',     # Sort Descending By Seeders
         }
 
         searchURL = self.url + '?page=rss&' + urllib.urlencode(params)
 
         logger.log(u"Search string: " + searchURL, logger.DEBUG)
 
-
         data = self.cache.getRSSFeed(searchURL)
-
         if not data:
-            logger.log(u"Error trying to load NyaaTorrents RSS feed: " + searchURL, logger.ERROR)
-            logger.log(u"RSS data: " + data, logger.DEBUG)
             return []
 
-        items = data.entries
+        if 'entries' in data:
+            items = data.entries
 
-        results = []
+            results = []
 
-        for curItem in items:
+            for curItem in items:
 
-            (title, url) = self._get_title_and_url(curItem)
+                (title, url) = self._get_title_and_url(curItem)
 
-            if not title or not url:
-                logger.log(
-                    u"The XML returned from the NyaaTorrents RSS feed is incomplete, this result is unusable: " + data,
-                    logger.ERROR)
-                continue
+                if title and url:
+                    results.append(curItem)
+                else:
+                    logger.log(
+                        u"The data returned from the " + self.name + " is incomplete, this result is unusable",
+                        logger.DEBUG)
 
-            results.append(curItem)
+            return results
 
-        return results
+        return []
 
     def _get_title_and_url(self, item):
 
@@ -119,6 +117,7 @@ class NyaaProvider(generic.TorrentProvider):
     def seedRatio(self):
         return self.ratio
 
+
 class NyaaCache(tvcache.TVCache):
     def __init__(self, provider):
         tvcache.TVCache.__init__(self, provider)
@@ -126,29 +125,18 @@ class NyaaCache(tvcache.TVCache):
         # only poll NyaaTorrents every 15 minutes max
         self.minTime = 15
 
-    def _getRSSData(self):
+    def _getDailyData(self):
         params = {
-            "page": 'rss',  # Use RSS page
-            "order": '1'  #Sort Descending By Date
+            "page": 'rss',   # Use RSS page
+            "order": '1',    # Sort Descending By Date
+            "cats": '1_37',  # Limit to English-translated Anime (for now)
         }
 
         url = self.provider.url + '?' + urllib.urlencode(params)
 
         logger.log(u"NyaaTorrents cache update URL: " + url, logger.DEBUG)
 
-        return self.getRSSFeed(url)
-
-    def _parseItem(self, item):
-        (title, url) = self.provider._get_title_and_url(item)
-
-        if not title or not url:
-            logger.log(u"The XML returned from the NyaaTorrents RSS feed is incomplete, this result is unusable",
-                       logger.ERROR)
-            return None
-
-        logger.log(u"RSS Feed provider: [" + self.provider.name + "] Attempting to add item to cache: " + title, logger.DEBUG)
-
-        return self._addCacheEntry(title, url)
+        return self.getRSSFeed(url).entries
 
 
 provider = NyaaProvider()

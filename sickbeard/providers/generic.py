@@ -24,25 +24,24 @@ import os
 import re
 import itertools
 import sickbeard
+import requests
 
-from lib import requests
-from lib.feedparser import feedparser
 from sickbeard import helpers, classes, logger, db
-from sickbeard.common import MULTI_EP_RESULT, SEASON_RESULT, cpu_presets
+from sickbeard.common import MULTI_EP_RESULT, SEASON_RESULT
 from sickbeard import tvcache
 from sickbeard import encodingKludge as ek
 from sickbeard.exceptions import ex
-from lib.hachoir_parser import createParser
 from sickbeard.name_parser.parser import NameParser, InvalidNameException, InvalidShowException
 from sickbeard.common import Quality
+from sickbeard import clients
 
+from hachoir_parser import createParser
 
 class GenericProvider:
     NZB = "nzb"
     TORRENT = "torrent"
 
     def __init__(self, name):
-
         # these need to be set in the subclass
         self.providerType = None
         self.name = name
@@ -61,9 +60,9 @@ class GenericProvider:
         self.cache = tvcache.TVCache(self)
 
         self.session = requests.session()
-        self.session.verify = False
-        self.session.headers.update({
-            'user-agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/32.0.1700.107 Safari/537.36'})
+
+        self.headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/32.0.1700.107 Safari/537.36'}
 
     def getID(self):
         return GenericProvider.makeID(self.name)
@@ -77,6 +76,9 @@ class GenericProvider:
 
     def _checkAuth(self):
         return
+
+    def _doLogin(self):
+        return True
 
     def isActive(self):
         if self.providerType == GenericProvider.NZB and sickbeard.USE_NZBS:
@@ -108,60 +110,63 @@ class GenericProvider:
 
         return result
 
-    def getURL(self, url, post_data=None, headers=None, json=False):
+    def getURL(self, url, post_data=None, params=None, timeout=30, json=False):
         """
         By default this is just a simple urlopen call but this method should be overridden
         for providers with special URL requirements (like cookies)
         """
 
-        if not headers:
-            headers = []
+        # check for auth
+        if not self._doLogin():
+            return
 
-        data = helpers.getURL(url, post_data, headers, json=json)
-
-        if not data:
-            logger.log(u"Error loading " + self.name + " URL: " + url, logger.ERROR)
-            return None
-
-        return data
+        return helpers.getURL(url, post_data=post_data, params=params, headers=self.headers, timeout=timeout,
+                              session=self.session, json=json)
 
     def downloadResult(self, result):
         """
         Save the result to disk.
         """
 
-        logger.log(u"Downloading a result from " + self.name + " at " + result.url)
-
-        data = self.getURL(result.url)
-
-        if data is None:
+        # check for auth
+        if not self._doLogin():
             return False
 
-        # use the appropriate watch folder
-        if self.providerType == GenericProvider.NZB:
-            saveDir = sickbeard.NZB_DIR
-            writeMode = 'w'
-        elif self.providerType == GenericProvider.TORRENT:
-            saveDir = sickbeard.TORRENT_DIR
-            writeMode = 'wb'
+        if self.providerType == GenericProvider.TORRENT:
+            try:
+                torrent_hash = re.findall('urn:btih:([\w]{32,40})', result.url)[0].upper()
+                if not torrent_hash:
+                    logger.log("Unable to extract torrent hash from link: " + ex(result.url), logger.ERROR)
+                    return False
+
+                urls = [
+                    'http://torcache.net/torrent/' + torrent_hash + '.torrent',
+                    'http://torrage.com/torrent/' + torrent_hash + '.torrent',
+                    'http://zoink.it/torrent/' + torrent_hash + '.torrent',
+                ]
+            except:
+                urls = [result.url]
+
+            filename = ek.ek(os.path.join, sickbeard.TORRENT_DIR,
+                             helpers.sanitizeFileName(result.name) + '.' + self.providerType)
+        elif self.providerType == GenericProvider.NZB:
+            urls = [result.url]
+
+            filename = ek.ek(os.path.join, sickbeard.NZB_DIR,
+                             helpers.sanitizeFileName(result.name) + '.' + self.providerType)
         else:
-            return False
+            return
 
-        # use the result name as the filename
-        file_name = ek.ek(os.path.join, saveDir, helpers.sanitizeFileName(result.name) + '.' + self.providerType)
+        for url in urls:
+            if helpers.download_file(url, filename, session=self.session):
+                logger.log(u"Downloading a result from " + self.name + " at " + url)
 
-        logger.log(u"Saving to " + file_name, logger.DEBUG)
+                if self.providerType == GenericProvider.TORRENT:
+                    logger.log(u"Saved magnet link to " + filename, logger.MESSAGE)
+                else:
+                    logger.log(u"Saved result to " + filename, logger.MESSAGE)
 
-        try:
-            with open(file_name, writeMode) as fileOut:
-                fileOut.write(data)
-            helpers.chmodAsParent(file_name)
-        except EnvironmentError, e:
-            logger.log("Unable to save the file: " + ex(e), logger.ERROR)
-            return False
-
-        # as long as it's a valid download then consider it a successful snatch
-        return self._verify_download(file_name)
+                return self._verify_download(filename)
 
     def _verify_download(self, file_name=None):
         """
@@ -287,7 +292,7 @@ class GenericProvider:
 
             # parse the file name
             try:
-                myParser = NameParser(False, showObj=show, convert=True)
+                myParser = NameParser(False, convert=True)
                 parse_result = myParser.parse(title)
             except InvalidNameException:
                 logger.log(u"Unable to parse the filename " + title + " into a valid episode", logger.DEBUG)
@@ -299,6 +304,7 @@ class GenericProvider:
             showObj = parse_result.show
             quality = parse_result.quality
             release_group = parse_result.release_group
+            version = parse_result.version
 
             addCacheEntry = False
             if not (showObj.air_by_date or showObj.sports):
@@ -311,14 +317,16 @@ class GenericProvider:
                     if not len(parse_result.episode_numbers) and (
                                 parse_result.season_number and parse_result.season_number != season) or (
                                 not parse_result.season_number and season != 1):
-                        logger.log(u"The result " + title + " doesn't seem to be a valid season that we are trying to makr downloadable, ignoring",
-                                   logger.DEBUG)
+                        logger.log(
+                            u"The result " + title + " doesn't seem to be a valid season that we are trying to mark downloadable, ignoring",
+                            logger.DEBUG)
                         addCacheEntry = True
                     elif len(parse_result.episode_numbers) and (
                                     parse_result.season_number != season or not [ep for ep in episodes if
                                                                                  ep.scene_episode in parse_result.episode_numbers]):
-                        logger.log(u"The result " + title + " doesn't seem to be a valid episode that we are trying to mark downloadable, ignoring",
-                                   logger.DEBUG)
+                        logger.log(
+                            u"The result " + title + " doesn't seem to be a valid episode that we are trying to mark downloadable, ignoring",
+                            logger.DEBUG)
                         addCacheEntry = True
 
                 if not addCacheEntry:
@@ -359,7 +367,7 @@ class GenericProvider:
             # make sure we want the episode
             downloadableEp = True
             for epNo in actual_episodes:
-                if not show.lookIfDownloadable(actual_season, epNo, quality, manualSearch):
+                if not showObj.lookIfDownloadable(actual_season, epNo, quality, manualSearch):
                     downloadableEp = False
                     break
 
@@ -385,6 +393,7 @@ class GenericProvider:
             result.quality = quality
             result.release_group = release_group
             result.content = None
+            result.version = version
 
             if len(epObj) == 1:
                 epNum = epObj[0].episode
@@ -397,9 +406,14 @@ class GenericProvider:
                 epNum = SEASON_RESULT
                 logger.log(u"Separating full season result to check for later", logger.DEBUG)
 
-            if not result:
-                continue
-
+            # validate torrent file if not magnet link to avoid invalid torrent links
+            if self.providerType == self.TORRENT:
+                if sickbeard.TORRENT_METHOD != "blackhole":
+                    client = clients.getClientIstance(sickbeard.TORRENT_METHOD)()
+                    result = client._get_torrent_hash(result)
+                    if not result.hash:
+                        logger.log(u'Unable to get torrent hash for ' + title + ', skipping it', logger.DEBUG)
+                        continue
 
             if epNum not in results:
                 results[epNum] = [result]
@@ -473,7 +487,7 @@ class GenericProvider:
 
             # parse the file name
             try:
-                myParser = NameParser(False, showObj=show, convert=True)
+                myParser = NameParser(False, convert=True)
                 parse_result = myParser.parse(title)
             except InvalidNameException:
                 logger.log(u"Unable to parse the filename " + title + " into a valid episode", logger.DEBUG)
@@ -485,6 +499,7 @@ class GenericProvider:
             showObj = parse_result.show
             quality = parse_result.quality
             release_group = parse_result.release_group
+            version = parse_result.version
 
             addCacheEntry = False
             if not (showObj.air_by_date or showObj.sports):
@@ -497,14 +512,16 @@ class GenericProvider:
                     if not len(parse_result.episode_numbers) and (
                                 parse_result.season_number and parse_result.season_number != season) or (
                                 not parse_result.season_number and season != 1):
-                        logger.log(u"The result " + title + " doesn't seem to be a valid season that we are trying to snatch, ignoring",
-                                   logger.DEBUG)
+                        logger.log(
+                            u"The result " + title + " doesn't seem to be a valid season that we are trying to snatch, ignoring",
+                            logger.DEBUG)
                         addCacheEntry = True
                     elif len(parse_result.episode_numbers) and (
                                     parse_result.season_number != season or not [ep for ep in episodes if
                                                                                  ep.scene_episode in parse_result.episode_numbers]):
-                        logger.log(u"The result " + title + " doesn't seem to be a valid episode that we are trying to snatch, ignoring",
-                                   logger.DEBUG)
+                        logger.log(
+                            u"The result " + title + " doesn't seem to be a valid episode that we are trying to snatch, ignoring",
+                            logger.DEBUG)
                         addCacheEntry = True
 
                 if not addCacheEntry:
@@ -571,6 +588,7 @@ class GenericProvider:
             result.quality = quality
             result.release_group = release_group
             result.content = None
+            result.version = version
 
             if len(epObj) == 1:
                 epNum = epObj[0].episode
@@ -583,8 +601,14 @@ class GenericProvider:
                 epNum = SEASON_RESULT
                 logger.log(u"Separating full season result to check for later", logger.DEBUG)
 
-            if not result:
-                continue
+            # validate torrent file if not magnet link to avoid invalid torrent links
+            if self.providerType == self.TORRENT:
+                if sickbeard.TORRENT_METHOD != "blackhole":
+                    client = clients.getClientIstance(sickbeard.TORRENT_METHOD)()
+                    result = client._get_torrent_hash(result)
+                    if not result.hash:
+                        logger.log(u'Unable to get torrent hash for ' + title + ', skipping it', logger.DEBUG)
+                        continue
 
             if epNum not in results:
                 results[epNum] = [result]

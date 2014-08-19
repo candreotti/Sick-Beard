@@ -52,8 +52,8 @@ class HDBitsProvider(generic.TorrentProvider):
 
         self.url = 'https://hdbits.org'
         self.search_url = 'https://hdbits.org/api/torrents'
-        self.rss_url = 'https://hdbits.org/api/torrents'                                                                                 
-        self.download_url = 'http://hdbits.org/download.php?'
+        self.rss_url = 'https://hdbits.org/api/torrents'
+        self.download_url = 'https://hdbits.org/download.php?'
 
     def isEnabled(self):
         return self.enabled
@@ -80,7 +80,7 @@ class HDBitsProvider(generic.TorrentProvider):
         return True
 
     def _get_season_search_strings(self, ep_obj):
-        season_search_string = [self._make_post_data_JSON(show=ep_obj.show, season=ep_obj.scene_season)]
+        season_search_string = [self._make_post_data_JSON(show=ep_obj.show, season=ep_obj)]
         return season_search_string
 
     def _get_episode_search_strings(self, ep_obj, add_string=''):
@@ -105,16 +105,8 @@ class HDBitsProvider(generic.TorrentProvider):
 
         logger.log(u"Search url: " + self.search_url + " search_params: " + search_params, logger.DEBUG)
 
-        data = self.getURL(self.search_url, post_data=search_params)
-
-        if not data:
-            logger.log(u"No data returned from " + self.search_url, logger.ERROR)
-            return []
-
-        parsedJSON = helpers.parse_json(data)
-
-        if parsedJSON is None:
-            logger.log(u"Error trying to load " + self.name + " JSON data", logger.ERROR)
+        parsedJSON = self.getURL(self.search_url, post_data=search_params, json=True)
+        if not parsedJSON:
             return []
 
         if self._checkAuthFromData(parsedJSON):
@@ -185,17 +177,17 @@ class HDBitsProvider(generic.TorrentProvider):
             if show.air_by_date or show.sports:
                 post_data['tvdb'] = {
                     'id': show.indexerid,
-                    'season': str(episode.airdate)[:7],
+                    'season': str(season.airdate)[:7],
                 }
             elif show.anime:
                 post_data['tvdb'] = {
                     'id': show.indexerid,
-                    'season': "%d" % episode.scene_absolute_number,
+                    'season': "%d" % season.scene_absolute_number,
                 }
             else:
                 post_data['tvdb'] = {
                     'id': show.indexerid,
-                    'season': season,
+                    'season': season.scene_season,
                 }
 
         if search_term:
@@ -225,19 +217,13 @@ class HDBitsCache(tvcache.TVCache):
 
         if self._checkAuth(None):
 
-            data = self._getRSSData()
-
-            # As long as we got something from the provider we count it as an update                                                     
-            if data:
-                self.setLastUpdate()
-            else:
-                return []
-
-            parsedJSON = helpers.parse_json(data)
-
-            if parsedJSON is None:
+            parsedJSON = self._getRSSData()
+            if not parsedJSON:
                 logger.log(u"Error trying to load " + self.provider.name + " JSON feed", logger.ERROR)
                 return []
+
+            # mark updated
+            self.setLastUpdate()
 
             if self._checkAuth(parsedJSON):
                 if parsedJSON and 'data' in parsedJSON:
@@ -249,39 +235,21 @@ class HDBitsCache(tvcache.TVCache):
 
                 cl = []
                 for item in items:
-
                     ci = self._parseItem(item)
                     if ci is not None:
                         cl.append(ci)
 
-
-
                 if len(cl) > 0:
                     myDB = self._getDB()
                     myDB.mass_action(cl)
-
-
             else:
                 raise exceptions.AuthException(
                     "Your authentication info for " + self.provider.name + " is incorrect, check your config")
-
         else:
             return []
 
     def _getRSSData(self):
-        return self.provider.getURL(self.provider.rss_url, post_data=self.provider._make_post_data_JSON())
-
-    def _parseItem(self, item):
-
-        (title, url) = self.provider._get_title_and_url(item)
-
-        if title and url:
-            logger.log(u"Adding item to results: " + title, logger.DEBUG)
-            return self._addCacheEntry(title, url)
-        else:
-            logger.log(u"The data returned from the " + self.provider.name + " is incomplete, this result is unusable",
-                       logger.ERROR)
-            return None
+        return self.provider.getURL(self.provider.rss_url, post_data=self.provider._make_post_data_JSON(), json=True)
 
     def _checkAuth(self, data):
         return self.provider._checkAuthFromData(data)

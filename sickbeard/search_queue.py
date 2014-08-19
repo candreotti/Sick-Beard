@@ -35,7 +35,7 @@ search_queue_lock = threading.Lock()
 BACKLOG_SEARCH = 10
 DAILY_SEARCH = 20
 FAILED_SEARCH = 30
-MANUAL_SEARCH = 30
+MANUAL_SEARCH = 40
 DOWNLOADABLE_SEARCH = 5
 
 
@@ -90,11 +90,8 @@ class SearchQueue(generic_queue.GenericQueue):
 
     def add_item(self, item):
 
-        if isinstance(item, (DailySearchQueueItem, BacklogQueueItem, ManualSearchQueueItem, FailedQueueItem)) \
+        if isinstance(item, (DailySearchQueueItem, BacklogQueueItem, DownloadSearchQueueItem, ManualSearchQueueItem, FailedQueueItem)) \
                 and not self.is_in_queue(item.show, item.segment):
-            sickbeard.name_cache.buildNameCache(item.show)
-            generic_queue.GenericQueue.add_item(self, item)
-        elif isinstance(item, DownloadSearchQueueItem) and not self.is_in_queue(item.show, item.segment):
             sickbeard.name_cache.buildNameCache(item.show)
             generic_queue.GenericQueue.add_item(self, item)
         else:

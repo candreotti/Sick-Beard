@@ -114,17 +114,14 @@ class OmgwtfnzbsProvider(generic.NZBProvider):
         search_url = 'https://api.omgwtfnzbs.org/json/?' + urllib.urlencode(params)
         logger.log(u"Search url: " + search_url, logger.DEBUG)
 
-        data = self.getURL(search_url, json=True)
-
-        if not data:
-            logger.log(u"No data returned from " + search_url, logger.ERROR)
+        parsedJSON = self.getURL(search_url, json=True)
+        if not parsedJSON:
             return []
 
-        if self._checkAuthFromData(data, is_XML=False):
-
+        if self._checkAuthFromData(parsedJSON, is_XML=False):
             results = []
 
-            for item in data:
+            for item in parsedJSON:
                 if 'release' in item and 'getnzb' in item:
                     results.append(item)
 
@@ -157,7 +154,7 @@ class OmgwtfnzbsCache(tvcache.TVCache):
         tvcache.TVCache.__init__(self, provider)
         self.minTime = 20
 
-    def _getRSSData(self):
+    def _getDailyData(self):
         params = {'user': provider.username,
                   'api': provider.api_key,
                   'eng': 1,
@@ -167,7 +164,7 @@ class OmgwtfnzbsCache(tvcache.TVCache):
 
         logger.log(self.provider.name + u" cache update URL: " + rss_url, logger.DEBUG)
 
-        return self.getRSSFeed(rss_url)
+        return self.getRSSFeed(rss_url).entries
 
     def _checkAuth(self, data):
         return self.provider._checkAuthFromData(data)

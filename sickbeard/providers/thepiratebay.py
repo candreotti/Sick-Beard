@@ -116,6 +116,9 @@ class ThePirateBayProvider(generic.TorrentProvider):
 
         fileURL = self.proxy._buildURL(self.url + 'ajax_details_filelist.php?id=' + str(torrent_id))
 
+        if self.proxy and self.proxy.isEnabled():
+            self.headers.update({'referer': self.proxy.getProxyURL()})
+
         data = self.getURL(fileURL)
         if not data:
             return None
@@ -222,6 +225,9 @@ class ThePirateBayProvider(generic.TorrentProvider):
         results = []
         items = {'Season': [], 'Episode': [], 'RSS': []}
 
+        if self.proxy and self.proxy.isEnabled():
+            self.headers.update({'referer': self.proxy.getProxyURL()})
+
         for mode in search_params.keys():
             for search_string in search_params[mode]:
 
@@ -290,84 +296,6 @@ class ThePirateBayProvider(generic.TorrentProvider):
 
         return (title, url)
 
-    def getURL(self, url, post_data=None, headers=None, json=False):
-
-        if not headers:
-            headers = {}
-
-        if not self.session:
-            self.session = requests.Session()
-
-        # Glype Proxies does not support Direct Linking.
-        # We have to fake a search on the proxy site to get data
-        if self.proxy.isEnabled():
-            headers.update({'referer': self.proxy.getProxyURL()})
-        
-        try:
-            if sickbeard.PROXY_SETTING:
-                proxies = {
-                    "http": sickbeard.PROXY_SETTING,
-                    "https": sickbeard.PROXY_SETTING,
-                }
-
-                r = self.session.get(url, headers=headers, proxies=proxies, verify=False)
-            else:
-                r = self.session.get(url, headers=headers, verify=False)
-        except (requests.exceptions.ConnectionError, requests.exceptions.HTTPError), e:
-            logger.log(u"Error loading " + self.name + " URL: " + str(sys.exc_info()) + " - " + ex(e), logger.ERROR)
-            return None
-
-        if r.status_code != 200:
-            logger.log(self.name + u" page requested with url " + url + " returned status code is " + str(
-                r.status_code) + ': ' + clients.http_error_code[r.status_code], logger.WARNING)
-            return None
-
-        return r.content
-
-    def downloadResult(self, result):
-        """
-        Save the result to disk.
-        """
-        if not self.session:
-            self.session = requests.Session()
-
-        torrent_hash = re.findall('urn:btih:([\w]{32,40})', result.url)[0].upper()
-
-        if not torrent_hash:
-            logger.log("Unable to extract torrent hash from link: " + ex(result.url), logger.ERROR)
-            return False
-
-        try:
-            r = self.session.get('http://torcache.net/torrent/' + torrent_hash + '.torrent', verify=False)
-        except Exception, e:
-            logger.log("Unable to connect to TORCACHE: " + ex(e), logger.ERROR)
-            try:
-                logger.log("Trying TORRAGE cache instead")
-                r = self.session.get('http://torrage.com/torrent/' + torrent_hash + '.torrent', verify=False)
-            except Exception, e:
-                logger.log("Unable to connect to TORRAGE: " + ex(e), logger.ERROR)
-                return False
-
-        if not r.status_code == 200:
-            return False
-
-        magnetFileName = ek.ek(os.path.join, sickbeard.TORRENT_DIR,
-                               helpers.sanitizeFileName(result.name) + '.' + self.providerType)
-        magnetFileContent = r.content
-
-        try:
-            with open(magnetFileName, 'wb') as fileOut:
-                fileOut.write(magnetFileContent)
-
-            helpers.chmodAsParent(magnetFileName)
-
-        except EnvironmentError, e:
-            logger.log("Unable to save the file: " + ex(e), logger.ERROR)
-            return False
-
-        logger.log(u"Saved magnet link to " + magnetFileName + " ", logger.MESSAGE)
-        return True
-
     def findPropers(self, search_date=datetime.datetime.today()):
 
         results = []
@@ -410,47 +338,9 @@ class ThePirateBayCache(tvcache.TVCache):
         # only poll ThePirateBay every 10 minutes max
         self.minTime = 20
 
-    def updateCache(self):
-
-        # delete anything older then 7 days
-        self._clearCache()
-
-        if not self.shouldUpdate():
-            return
-
+    def _getDailyData(self):
         search_params = {'RSS': ['rss']}
-        rss_results = self.provider._doSearch(search_params)
-
-        if rss_results:
-            self.setLastUpdate()
-        else:
-            return []
-
-        cl = []
-        for result in rss_results:
-
-            item = (result[0], result[1])
-            ci = self._parseItem(item)
-            if ci is not None:
-                cl.append(ci)
-
-
-
-        if len(cl) > 0:
-            myDB = self._getDB()
-            myDB.mass_action(cl)
-
-
-    def _parseItem(self, item):
-
-        (title, url) = item
-
-        if not title or not url:
-            return None
-
-        logger.log(u"Attempting to cache item:[" + title +"]", logger.DEBUG)
-
-        return self._addCacheEntry(title, url)
+        return self.provider._doSearch(search_params)
 
 
 class ThePirateBayWebproxy:

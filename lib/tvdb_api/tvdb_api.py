@@ -6,6 +6,7 @@
 #license:unlicense (http://unlicense.org/)
 
 from functools import wraps
+import traceback
 
 __author__ = "dbr/Ben"
 __version__ = "1.9"
@@ -21,7 +22,7 @@ import logging
 import zipfile
 import datetime as dt
 import requests
-import cachecontrol
+import requests.exceptions
 import xmltodict
 
 try:
@@ -35,7 +36,7 @@ except ImportError:
     gzip = None
 
 from lib.dateutil.parser import parse
-from cachecontrol import caches
+from lib.cachecontrol import CacheControl, caches
 
 from tvdb_ui import BaseUI, ConsoleUI
 from tvdb_exceptions import (tvdb_error, tvdb_userabort, tvdb_shownotfound,
@@ -366,7 +367,8 @@ class Tvdb:
                  apikey=None,
                  forceConnect=False,
                  useZip=False,
-                 dvdorder=False):
+                 dvdorder=False,
+                 proxy=None):
 
         """interactive (True/False):
             When True, uses built-in console UI is used to select the correct show.
@@ -464,16 +466,16 @@ class Tvdb:
 
         self.config['dvdorder'] = dvdorder
 
+        self.config['proxy'] = proxy
+
         if cache is True:
             self.config['cache_enabled'] = True
             self.config['cache_location'] = self._getTempDir()
-            self.sess = cachecontrol.CacheControl(cache=caches.FileCache(self.config['cache_location']))
         elif cache is False:
             self.config['cache_enabled'] = False
         elif isinstance(cache, basestring):
             self.config['cache_enabled'] = True
             self.config['cache_location'] = cache
-            self.sess = cachecontrol.CacheControl(cache=caches.FileCache(self.config['cache_location']))
         else:
             raise ValueError("Invalid value for Cache %r (type was %s)" % (cache, type(cache)))
 
@@ -534,6 +536,11 @@ class Tvdb:
         self.config['url_seriesBanner'] = u"%(base_url)s/api/%(apikey)s/series/%%s/banners.xml" % self.config
         self.config['url_artworkPrefix'] = u"%(base_url)s/banners/%%s" % self.config
 
+        self.config['url_updates_all'] = u"%(base_url)s/api/%(apikey)s/updates_all.zip" % self.config
+        self.config['url_updates_month'] = u"%(base_url)s/api/%(apikey)s/updates_month.zip" % self.config
+        self.config['url_updates_week'] = u"%(base_url)s/api/%(apikey)s/updates_week.zip" % self.config
+        self.config['url_updates_day'] = u"%(base_url)s/api/%(apikey)s/updates_day.zip" % self.config
+
     def _getTempDir(self):
         """Returns the [system temp dir]/tvdb_api-u501 (or
         tvdb_api-myuser)
@@ -556,18 +563,25 @@ class Tvdb:
 
             # get response from TVDB
             if self.config['cache_enabled']:
-                resp = self.sess.get(url, cache_auto=True, params=params)
+                session = CacheControl(cache=caches.FileCache(self.config['cache_location']))
+                if self.config['proxy']:
+                    log().debug("Using proxy for URL: %s" % url)
+                    session.proxies = {
+                        "http": self.config['proxy'],
+                        "https": self.config['proxy'],
+                    }
+
+                resp = session.get(url, cache_auto=True, params=params)
             else:
                 resp = requests.get(url, params=params)
-
-        except requests.HTTPError, e:
+        except requests.exceptions.HTTPError, e:
             raise tvdb_error("HTTP error " + str(e.errno) + " while loading URL " + str(url))
-
-        except requests.ConnectionError, e:
+        except requests.exceptions.ConnectionError, e:
             raise tvdb_error("Connection error " + str(e.message) + " while loading URL " + str(url))
-
-        except requests.Timeout, e:
+        except requests.exceptions.Timeout, e:
             raise tvdb_error("Connection timed out " + str(e.message) + " while loading URL " + str(url))
+        except Exception:
+            raise tvdb_error("Unknown exception while loading URL " + url + ": " + traceback.format_exc())
 
         def process(path, key, value):
             key = key.lower()
@@ -615,7 +629,7 @@ class Tvdb:
         """
         try:
             src = self._loadUrl(url, params=params, language=language)
-            src = [src[item] for item in src][0]
+            src = [src[item] for item in src][0] if src else []
         except:
             errormsg = "There was an error with the XML retrieved from thetvdb.com:"
 
@@ -679,8 +693,7 @@ class Tvdb:
         log().debug("Searching for show %s" % series)
         self.config['params_getSeries']['seriesname'] = series
         seriesEt = self._getetsrc(self.config['url_getSeries'], self.config['params_getSeries'])
-
-        return [seriesEt[item] for item in seriesEt][0]
+        return [seriesEt[item] for item in seriesEt][0] if seriesEt else []
 
     def _getSeries(self, series):
         """This searches TheTVDB.com for the series name,
@@ -698,7 +711,8 @@ class Tvdb:
 
         if self.config['custom_ui'] is not None:
             log().debug("Using custom UI %s" % (repr(self.config['custom_ui'])))
-            ui = self.config['custom_ui'](config=self.config)
+            CustomUI = self.config['custom_ui']
+            ui = CustomUI(config=self.config)
         else:
             if not self.config['interactive']:
                 log().debug('Auto-selecting first search result using BaseUI')

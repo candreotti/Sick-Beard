@@ -24,10 +24,10 @@ import os.path
 from sickbeard import db, common, helpers, logger
 
 from sickbeard import encodingKludge as ek
-from sickbeard.name_parser.parser import NameParser, InvalidNameException
+from sickbeard.name_parser.parser import NameParser, InvalidNameException, InvalidShowException
 
 MIN_DB_VERSION = 9  # oldest db version we support migrating from
-MAX_DB_VERSION = 39
+MAX_DB_VERSION = 42
 
 class MainSanityCheck(db.DBSanityCheck):
     def check(self):
@@ -901,3 +901,57 @@ class AddSceneToTvShows(AddXemRefresh):
 
         self.incDBVersion()
 
+
+class RemoveTextFieldFromTvepisodes(AddSceneToTvShows):
+    def test(self):
+        return self.checkDBVersion() >= 40
+
+    def execute(self):
+        backupDatabase(self.checkDBVersion())
+
+        logger.log(u"Removing TEXT field from tv_episodes table added for a mistake...")
+
+        if self.hasTable("tmp_tv_episodes"):
+            logger.log(u"Removing temp tv_episodes tables left behind from previous updates...")
+            self.connection.action("DROP TABLE tmp_tv_episodes")
+
+        if self.hasColumn("tv_episodes", "TEXT"):
+
+            self.connection.action("ALTER TABLE tv_episodes RENAME TO tmp_tv_episodes")
+            self.connection.action(
+                "CREATE TABLE tv_episodes (episode_id INTEGER PRIMARY KEY, showid NUMERIC, indexerid NUMERIC, indexer TEXT, name TEXT, season NUMERIC, episode NUMERIC, description TEXT, airdate NUMERIC, hasnfo NUMERIC, hastbn NUMERIC, status NUMERIC, location TEXT, file_size NUMERIC, release_name TEXT, subtitles TEXT, subtitles_searchcount NUMERIC, subtitles_lastsearch TIMESTAMP, is_proper NUMERIC, scene_season NUMERIC, scene_episode NUMERIC, torrent_hash TEXT, absolute_number NUMERIC, scene_absolute_number NUMERIC)")
+            self.connection.action(
+                "INSERT INTO tv_episodes(episode_id, showid, indexerid, indexer, name, season, episode, description, airdate, hasnfo, hastbn, status, location, file_size, release_name, subtitles, subtitles_searchcount, subtitles_lastsearch, is_proper, scene_season, scene_episode, torrent_hash, absolute_number, scene_absolute_number) SELECT episode_id, showid, indexerid, indexer, name, season, episode, description, airdate, hasnfo, hastbn, status, location, file_size, release_name, subtitles, subtitles_searchcount, subtitles_lastsearch, is_proper, scene_season, scene_episode, torrent_hash, absolute_number, scene_absolute_number from tmp_tv_episodes")
+            self.connection.action("DROP TABLE tmp_tv_episodes")
+
+        self.incDBVersion()
+
+class AddIndexerMapping(RemoveTextFieldFromTvepisodes):
+    def test(self):
+        return self.checkDBVersion() >= 41
+
+    def execute(self):
+        backupDatabase(self.checkDBVersion())
+
+        if self.hasTable("indexer_mapping"):
+            self.connection.action("DROP TABLE indexer_mapping")
+
+        logger.log(u"Adding table indexer_mapping")
+        self.connection.action(
+            "CREATE TABLE indexer_mapping (indexer_id INTEGER, indexer NUMERIC, mindexer_id INTEGER, mindexer NUMERIC, PRIMARY KEY (indexer_id, indexer))")
+
+        self.incDBVersion()
+
+class AddVersionToTvEpisodes(AddIndexerMapping):
+    def test(self):
+        return self.checkDBVersion() >= 42
+
+    def execute(self):
+        backupDatabase(self.checkDBVersion())
+
+        logger.log(u"Adding column version to tv_episodes and history")
+        self.addColumn("tv_episodes", "version", "NUMERIC", "-1")
+        self.addColumn("tv_episodes", "release_group", "TEXT", "")
+        self.addColumn("history", "version", "NUMERIC", "-1")
+
+        self.incDBVersion()

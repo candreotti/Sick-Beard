@@ -40,11 +40,11 @@ from sickbeard.helpers import sanitizeSceneName
 
 
 class TorrentLeechProvider(generic.TorrentProvider):
-    urls = {'base_url': 'http://torrentleech.org/',
-            'login': 'http://torrentleech.org/user/account/login/',
-            'detail': 'http://torrentleech.org/torrent/%s',
-            'search': 'http://torrentleech.org/torrents/browse/index/query/%s/categories/%s',
-            'download': 'http://torrentleech.org%s',
+    urls = {'base_url': 'https://torrentleech.org/',
+            'login': 'https://torrentleech.org/user/account/login/',
+            'detail': 'https://torrentleech.org/torrent/%s',
+            'search': 'https://torrentleech.org/torrents/browse/index/query/%s/categories/%s',
+            'download': 'https://torrentleech.org%s',
     }
 
     def __init__(self):
@@ -88,7 +88,7 @@ class TorrentLeechProvider(generic.TorrentProvider):
         self.session = requests.Session()
 
         try:
-            response = self.session.post(self.urls['login'], data=login_params, timeout=30)
+            response = self.session.post(self.urls['login'], data=login_params, timeout=30, verify=False)
         except (requests.exceptions.ConnectionError, requests.exceptions.HTTPError), e:
             logger.log(u'Unable to connect to ' + self.name + ' provider: ' + ex(e), logger.ERROR)
             return False
@@ -230,32 +230,6 @@ class TorrentLeechProvider(generic.TorrentProvider):
 
         return (title, url)
 
-    def getURL(self, url, post_data=None, headers=None, json=False):
-
-        if not self.session:
-            self._doLogin()
-
-        if not headers:
-            headers = []
-
-        try:
-            # Remove double-slashes from url
-            parsed = list(urlparse.urlparse(url))
-            parsed[2] = re.sub("/{2,}", "/", parsed[2])  # replace two or more / with one
-            url = urlparse.urlunparse(parsed)
-
-            response = self.session.get(url, verify=False)
-        except (requests.exceptions.ConnectionError, requests.exceptions.HTTPError), e:
-            logger.log(u"Error loading " + self.name + " URL: " + ex(e), logger.ERROR)
-            return None
-
-        if response.status_code != 200:
-            logger.log(self.name + u" page requested with url " + url + " returned status code is " + str(
-                response.status_code) + ': ' + clients.http_error_code[response.status_code], logger.WARNING)
-            return None
-
-        return response.content
-
     def findPropers(self, search_date=datetime.datetime.today()):
 
         results = []
@@ -297,47 +271,9 @@ class TorrentLeechCache(tvcache.TVCache):
         # only poll TorrentLeech every 20 minutes max
         self.minTime = 20
 
-    def updateCache(self):
-
-        # delete anything older then 7 days
-        self._clearCache()
-
-        if not self.shouldUpdate():
-            return
-
+    def _getDailyData(self):
         search_params = {'RSS': ['']}
-        rss_results = self.provider._doSearch(search_params)
-
-        if rss_results:
-            self.setLastUpdate()
-        else:
-            return []
-
-        cl = []
-        for result in rss_results:
-
-            item = (result[0], result[1])
-            ci = self._parseItem(item)
-            if ci is not None:
-                cl.append(ci)
-
-
-
-        if len(cl) > 0:
-            myDB = self._getDB()
-            myDB.mass_action(cl)
-
-
-    def _parseItem(self, item):
-
-        (title, url) = item
-
-        if not title or not url:
-            return None
-
-        logger.log(u"Attempting to cache item:[" + title +"]", logger.DEBUG)
-
-        return self._addCacheEntry(title, url)
+        return self.provider._doSearch(search_params)
 
 
 provider = TorrentLeechProvider()
