@@ -3777,7 +3777,7 @@ class Home(MainHandler):
                 logger.log(u"Show: " + str(showObj.indexerid), logger.DEBUG)
                 ep_obj_list = showObj.getAllEpisodes()
                 for epObj in ep_obj_list: 
-                    if epObj.status in (SKIPPED,DOWNLOADABLE,UNAIRED) and epObj.season != 0:
+                    if epObj.status in (SKIPPED,DOWNLOADABLE,UNAIRED,SNATCHED,FAILED) and epObj.season != 0:
                         logger.log(u"Attempting to unlibrary episode " + str(epObj.season) + "x" + str(epObj.episode) + " with status: " + str(epObj.status), logger.DEBUG)
                         notifiers.trakt_notifier.unlibrary(epObj)
                     
