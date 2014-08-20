@@ -414,18 +414,17 @@ class TraktChecker():
             newShow = helpers.findCertainShowFromIMDB(sickbeard.showList, show["imdb_id"])
 
             try:
-                if newShow and int(newShow.indexer) == indexer:
-                    for episode in show["episodes"]:
-                        if newShow is not None:
-                            epObj = newShow.getEpisode(int(episode["season"]), int(episode["number"]))
-                            if epObj.status != WANTED:
-                                self.setEpisodeToWanted(newShow, episode["season"], episode["number"])
-                                if not self.episode_in_watchlist(newShow, episode["season"], episode["number"]):
-                                    if not self.update_watchlist("episode", "add", newShow, episode["season"], episode["number"]):
-                                        return False
-                        else:
-                            self.todoWanted.append((indexer_id, episode["season"], episode["number"]))
-                    self.startBacklog(newShow)
+                for episode in show["episodes"]:
+                    if newShow is not None:
+                        epObj = newShow.getEpisode(int(episode["season"]), int(episode["number"]))
+                        if epObj.status != WANTED:
+                            self.setEpisodeToWanted(newShow, episode["season"], episode["number"])
+                            if not self.episode_in_watchlist(newShow, episode["season"], episode["number"]):
+                                if not self.update_watchlist("episode", "add", newShow, episode["season"], episode["number"]):
+                                    return False
+                    else:
+                        self.todoWanted.append((indexer_id, episode["season"], episode["number"]))
+                self.startBacklog(newShow)
             except TypeError:
                 logger.log(u"Could not parse the output from trakt for " + show["title"], logger.DEBUG)
                 return False

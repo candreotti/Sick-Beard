@@ -2903,23 +2903,23 @@ class NewHomeAddShows(MainHandler):
             if sickbeard.TRAKT_BLACKLIST_NAME is not None:
                 not_liked_show = TraktCall("user/list.json/%API%/" + sickbeard.TRAKT_USERNAME + "/" + sickbeard.TRAKT_BLACKLIST_NAME, sickbeard.TRAKT_API, sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_PASSWORD)
             for tshow in t.trending_shows:
-                logger.log(u"Analysing Show " + tshow["title"] + " imdb_id " + str(tshow["imdb_id"]), logger.DEBUG)
+                #logger.log(u"Analysing Show " + tshow["title"] + " imdb_id " + str(tshow["imdb_id"]), logger.DEBUG)
                 newShow = helpers.findCertainShowFromIMDB(sickbeard.showList, tshow["imdb_id"])
                 if newShow is not None:
-                    logger.log(u"Show " + tshow["title"] + " is in sickbeard List, remove from trending", logger.DEBUG)
+                    #logger.log(u"Show " + tshow["title"] + " is in sickbeard List, remove from trending", logger.DEBUG)
                     t_trending_shows.remove(tshow)
                 else:
                     if tshow["imdb_id"] in (show["imdb_id"] for show in library_shows):
-                        logger.log(u"Show " + tshow["title"] + " is in tracktv library, remove from trending", logger.DEBUG)
+                        #logger.log(u"Show " + tshow["title"] + " is in tracktv library, remove from trending", logger.DEBUG)
                         t_trending_shows.remove(tshow)
                     elif sickbeard.TRAKT_BLACKLIST_NAME != '':
                         if tshow["imdb_id"] in (show["show"]["imdb_id"] for show in not_liked_show["items"] if show["type"] == "show"):	
-                            logger.log(u"Show " + tshow["title"] + " is in blacklist traktv List, remove from trending", logger.DEBUG)
+                            #logger.log(u"Show " + tshow["title"] + " is in blacklist traktv List, remove from trending", logger.DEBUG)
                             t_trending_shows.remove(tshow)
                         else:
-                            logger.log(u"Show " + tshow["title"] + " is not in sickbeard List/traktv Library/blacklist traktv list, keep from trending", logger.DEBUG)
+                            #logger.log(u"Show " + tshow["title"] + " is not in sickbeard List/traktv Library/blacklist traktv list, keep from trending", logger.DEBUG)
                     else:  
-                        logger.log(u"Show " + tshow["title"] + " is not in sickbeard List/traktv Library, keep from trending", logger.DEBUG)
+                        #logger.log(u"Show " + tshow["title"] + " is not in sickbeard List/traktv Library, keep from trending", logger.DEBUG)
 
         t.trending_shows = deepcopy(sorted(t_trending_shows, key=lambda x: x["ratings"]["loved"], reverse=True))
 
