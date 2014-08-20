@@ -136,10 +136,9 @@ def replaceExtension(filename, newExt):
         return sepFile[0] + "." + newExt
 
 
-def isBtsyncFile(filename):
-    sepFile = filename.rpartition(".")
-
-    if sepFile[2].lower() == '!sync':
+def isSyncFile(filename):
+    extension = filename.rpartition(".")[2].lower()
+    if extension == '!sync' or extension == 'lftp-pget-status':
         return True
     else:
         return False
@@ -233,7 +232,7 @@ def findCertainShowFromIMDB(showList, imdbid):
     
     results = []
     if imdbid:
-        results = filter(lambda x: x.imdbid == imdbid, showList)
+        results = filter(lambda x: str(x.imdbid) == str(imdbid), showList)
 
     if len(results) == 0:
         return None

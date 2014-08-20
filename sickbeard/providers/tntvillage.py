@@ -124,6 +124,13 @@ class TNTVillageProvider(generic.TorrentProvider):
         quality = Quality.sceneQuality(item[0])
         return quality
 
+    def _checkAuth(self):
+
+        if not self.username or not self.password:
+            raise AuthException("Your authentication credentials for " + self.name + " are missing, check your config.")
+
+        return True
+
     def _doLogin(self):
 
 #        if any(requests.utils.dict_from_cookiejar(self.session.cookies).values()):
@@ -188,6 +195,7 @@ class TNTVillageProvider(generic.TorrentProvider):
                 ep_string = show_name + ' S%02d' % int(ep_obj.scene_season)  #1) showName SXX
 
             search_string['Season'].append(ep_string)
+
 
         return [search_string]
 
@@ -423,7 +431,7 @@ class TNTVillageProvider(generic.TorrentProvider):
 
     def _get_title_and_url(self, item):
 
-        title, url = item[0], item[1]
+        title, url, id, seeders, leechers = item
 
         if title:
             title = u'' + title
@@ -476,7 +484,7 @@ class TNTVillageCache(tvcache.TVCache):
         self.minTime = 30
 
     def _getDailyData(self):
-        search_params = {'RSS': ['']}
+        search_params = {'RSS': []}
         return self.provider._doSearch(search_params)
 
 

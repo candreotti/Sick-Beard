@@ -184,7 +184,11 @@ class TraktChecker():
 
         if sickbeard.TRAKT_REMOVE_WATCHLIST and sickbeard.USE_TRAKT:
             logger.log(u"Start looking if some episode has to be removed from watchlist", logger.DEBUG)
+            if self.EpisodeWatchlist == 'NULL':
+                logger.log(u"Episode watchlist is empty", logger.DEBUG)
+                return True 
             for show in self.EpisodeWatchlist:
+                logger.log(u"show: " + str(show), logger.WARNING)
                 for episode in show["episodes"]:
                     newShow = helpers.findCertainShowFromIMDB(sickbeard.showList, show["imdb_id"])
                     if newShow is not None:
@@ -208,6 +212,9 @@ class TraktChecker():
 
         if sickbeard.TRAKT_REMOVE_SHOW_WATCHLIST and sickbeard.USE_TRAKT:
             logger.log(u"Start looking if some show has to be removed from watchlist", logger.DEBUG)
+            if self.ShowWatchlist == 'NULL':
+                logger.log(u"Show watchlist is empty", logger.WARNING)
+                return True 
             for show in self.ShowWatchlist:
                 newShow = helpers.findCertainShowFromIMDB(sickbeard.showList, show["imdb_id"])
                 if (newShow is not None) and (newShow.status == "Ended"):
@@ -260,7 +267,7 @@ class TraktChecker():
 
         num_of_download = sickbeard.TRAKT_NUM_EP
 
-        if num_of_download == 0:
+        if num_of_download == 0 or self.EpisodeWatched == 'NULL':
             return True
 
         logger.log(u"Start looking if having " + str(num_of_download) + " episode not watched", logger.DEBUG)
@@ -289,7 +296,7 @@ class TraktChecker():
             ep_sb = cur_result["episode"]
 
             newShow = helpers.findCertainShow(sickbeard.showList, int(indexer_id))
-            tvdb_id = helpers.mapIndexersToShow(newShow)[1]
+            tvdb_id = str(helpers.mapIndexersToShow(newShow)[1])
 
             num_op_ep=0
             season = 0
@@ -337,7 +344,6 @@ class TraktChecker():
 
                     if (s*100+e) > (season*100+episode):
                         if not paused:
-                            logger.log(u"Changed episode to wanted: S" + str(s) + "E"+  str(e), logger.DEBUG)
                             if newShow is not None:
                                 self.setEpisodeToWanted(newShow, s, e)
                                 if not self.episode_in_watchlist(newShow, s, e):
@@ -347,7 +353,6 @@ class TraktChecker():
                             else:
                                 self.todoWanted.append(int(indexer_id), s, e)
                     else:
-                        logger.log(u"Changed episode to archived: S" + str(s) + "E"+  str(e), logger.DEBUG)
                         self.setEpisodeToIgnored(newShow, s, e)
                         if self.episode_in_watchlist(newShow, s, e):
                             if not self.update_watchlist("episode", "remove", newShow, s, e):
@@ -366,6 +371,9 @@ class TraktChecker():
 
     def updateShows(self):
         logger.log(u"Start looking if some show need to be added to SickBeard", logger.DEBUG)
+        if self.ShowWatchlist == 'NULL':
+            logger.log(u"Show watchlist is empty", logger.DEBUG)
+            return True
         for show in self.ShowWatchlist:
             indexer = int(sickbeard.TRAKT_DEFAULT_INDEXER)
             if indexer == INDEXER_TVRAGE:
@@ -396,16 +404,14 @@ class TraktChecker():
         Sets episodes to wanted that are in trakt watchlist
         """
         logger.log(u"Start looking if some episode in WatchList has to be set WANTED", logger.DEBUG)
+        if self.EpisodeWatchlist == 'NULL':
+            logger.log(u"Episode watchlist is empty", logger.DEBUG)
+            return 
 
         for show in self.EpisodeWatchlist:
-            indexer = int(sickbeard.TRAKT_DEFAULT_INDEXER)
-            if indexer == INDEXER_TVRAGE:
-                indexer_id = int(show["tvrage_id"])
-            else:
-                indexer_id = int(show["tvdb_id"])
 
             #self.addDefaultShow(indexer, indexer_id, show["title"], SKIPPED)
-            newShow = helpers.findCertainShow(sickbeard.showList, indexer_id)
+            newShow = helpers.findCertainShowFromIMDB(sickbeard.showList, show["imdb_id"])
 
             try:
                 if newShow and int(newShow.indexer) == indexer:
@@ -422,6 +428,9 @@ class TraktChecker():
                     self.startBacklog(newShow)
             except TypeError:
                 logger.log(u"Could not parse the output from trakt for " + show["title"], logger.DEBUG)
+                return False
+
+        return True
 
         logger.log(u"Stop looking if some episode in WatchList has to be set WANTED", logger.DEBUG)
 
@@ -529,6 +538,9 @@ class TraktChecker():
         logger.log(u"Checking if show: Indexer " + str(show_obj.indexer) + "indexer_id " + str(show_obj.indexerid) + ", Title " + str(show_obj.name) + " is completely watched", logger.DEBUG)
 
         found = False
+        if self.ShowProgress == 'NULL':
+            logger.log(u"Show progress is empty", logger.DEBUG)
+            return found 
 
         for pshow in self.ShowProgress:
 
@@ -582,6 +594,9 @@ class TraktChecker():
     def show_in_watchlist (self, show_obj):
 
         found = False
+        if self.ShowWatchlist == 'NULL':
+            logger.log(u"Show watchlist is empty", logger.DEBUG)
+            return found 
 
         for show in self.ShowWatchlist:
 
@@ -599,10 +614,13 @@ class TraktChecker():
     def episode_in_watchlist (self, show_obj, s, e):
 
         found = False
+        if self.EpisodeWatchlist == 'NULL':
+            logger.log(u"Episode watchlist is empty", logger.DEBUG)
+            return found 
 
         for show in self.EpisodeWatchlist:
 
-            if int(show_obj.indexer) == INDEXER_TVRAGE:
+            if show_obj.indexer == int(INDEXER_TVRAGE):
                 indexer_id = int(show["tvrage_id"])
             else:
                 indexer_id = int(show["tvdb_id"])

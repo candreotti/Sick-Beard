@@ -331,6 +331,75 @@
                                     <span class="component-desc">Category for downloads to go into (eg. TV)</span>
                                 </label>
                             </div>
+
+                            	#if $sickbeard.NZBGET_PRIORITY == -100:
+                                    #set $prio_verylow = 'selected="selected"'
+                                    #set $prio_low = ''
+                                    #set $prio_normal = ''
+                                    #set $prio_high = ''
+                                    #set $prio_veryhigh = ''
+                                    #set $prio_force = ''
+                                #elif $sickbeard.NZBGET_PRIORITY == -50:
+                                    #set $prio_verylow = ''
+                                    #set $prio_low = 'selected="selected"'
+                                    #set $prio_normal = ''
+                                    #set $prio_high = ''
+                                    #set $prio_veryhigh = ''
+                                    #set $prio_force = ''
+                                #elif $sickbeard.NZBGET_PRIORITY == 0:
+                                    #set $prio_verylow = ''
+                                    #set $prio_low = ''
+                                    #set $prio_normal = 'selected="selected"'
+                                    #set $prio_high = ''
+                                    #set $prio_veryhigh = ''
+                                    #set $prio_force = ''
+                                #elif $sickbeard.NZBGET_PRIORITY == 50:
+                                    #set $prio_verylow = ''
+                                    #set $prio_low = ''
+                                    #set $prio_normal = ''
+                                    #set $prio_high = 'selected="selected"'
+                                    #set $prio_veryhigh = ''
+                                    #set $prio_force = ''
+                                #elif $sickbeard.NZBGET_PRIORITY == 100:
+                                    #set $prio_verylow = ''
+                                    #set $prio_low = ''
+                                    #set $prio_normal = ''
+                                    #set $prio_high = ''
+                                    #set $prio_veryhigh = 'selected="selected"'
+                                    #set $prio_force = ''
+                                #elif $sickbeard.NZBGET_PRIORITY == 900:
+                                    #set $prio_verylow = ''
+                                    #set $prio_low = ''
+                                    #set $prio_normal = ''
+                                    #set $prio_high = ''
+                                    #set $prio_veryhigh = ''
+                                    #set $prio_force = 'selected="selected"'
+                                #else:
+                                    #set $prio_verylow = ''
+                                    #set $prio_low = ''
+                                    #set $prio_normal = 'selected="selected"'
+                                    #set $prio_high = ''
+                                    #set $prio_veryhigh = ''
+                                    #set $prio_force = ''
+                                #end if
+
+                            <div class="field-pair">
+                                <label class="nocheck clearfix">
+                                    <span class="component-title">NZBget Priority</span>
+                                    <select name="nzbget_priority" id="nzbget_priority">
+                                        <option value="-100" ${prio_verylow}>Very Low</option>
+                                        <option value="-50" ${prio_low}>Low</option>
+                                        <option value="0" ${prio_normal}>Normal</option>
+                                        <option value="50" ${prio_high}>High</option>
+                                        <option value="100" ${prio_veryhigh}>Very High</option>
+                                        <option value="900" ${prio_force}>Force</option>
+                                    </select>
+                                </label>
+                                <label class="nocheck clearfix">
+                                    <span class="component-title">&nbsp;</span>
+                                    <span class="component-desc">Priority for daily snatches (no backlog)</span>
+                                </label>
+                            </div>
                         </div>
                         
                         <div class="clearfix"></div>

@@ -103,6 +103,7 @@ AUTO_UPDATE = False
 NOTIFY_ON_UPDATE = False
 CUR_COMMIT_HASH = None
 BRANCH = ''
+CUR_COMMIT_BRANCH = ''
 
 INIT_LOCK = Lock()
 started = False
@@ -245,6 +246,7 @@ NZBGET_PASSWORD = None
 NZBGET_CATEGORY = None
 NZBGET_HOST = None
 NZBGET_USE_HTTPS = False
+NZBGET_PRIORITY = 100
 
 TORRENT_USERNAME = None
 TORRENT_PASSWORD = None
@@ -466,14 +468,14 @@ __INITIALIZED__ = False
 def initialize(consoleLogging=True):
     with INIT_LOCK:
 
-        global BRANCH, ACTUAL_LOG_DIR, LOG_DIR, WEB_PORT, WEB_LOG, ENCRYPTION_VERSION, WEB_ROOT, WEB_USERNAME, WEB_PASSWORD, WEB_HOST, WEB_IPV6, USE_API, API_KEY, ENABLE_HTTPS, HTTPS_CERT, HTTPS_KEY, \
+        global BRANCH, CUR_COMMIT_HASH, CUR_COMMIT_BRANCH, ACTUAL_LOG_DIR, LOG_DIR, WEB_PORT, WEB_LOG, ENCRYPTION_VERSION, WEB_ROOT, WEB_USERNAME, WEB_PASSWORD, WEB_HOST, WEB_IPV6, USE_API, API_KEY, ENABLE_HTTPS, HTTPS_CERT, HTTPS_KEY, \
             HANDLE_REVERSE_PROXY, USE_NZBS, USE_TORRENTS, NZB_METHOD, NZB_DIR, DOWNLOAD_PROPERS, CHECK_PROPERS_INTERVAL, ALLOW_HIGH_PRIORITY, TORRENT_METHOD, \
             SAB_USERNAME, SAB_PASSWORD, SAB_APIKEY, SAB_CATEGORY, SAB_HOST, \
-            NZBGET_USERNAME, NZBGET_PASSWORD, NZBGET_CATEGORY, NZBGET_HOST, NZBGET_USE_HTTPS, backlogSearchScheduler, downloadableSearchScheduler, \
+            NZBGET_USERNAME, NZBGET_PASSWORD, NZBGET_CATEGORY, NZBGET_PRIORITY, NZBGET_HOST, NZBGET_USE_HTTPS, backlogSearchScheduler, downloadableSearchScheduler, \
             TORRENT_USERNAME, TORRENT_PASSWORD, TORRENT_HOST, TORRENT_PATH, TORRENT_SEED_TIME, TORRENT_PAUSED, TORRENT_HIGH_BANDWIDTH, TORRENT_LABEL, TORRENT_VERIFY_CERT, \
             USE_XBMC, XBMC_ALWAYS_ON, XBMC_NOTIFY_ONSNATCH, XBMC_NOTIFY_ONDOWNLOAD, XBMC_NOTIFY_ONDOWNLOADABLE, XBMC_NOTIFY_ONSUBTITLEDOWNLOAD, XBMC_UPDATE_FULL, XBMC_UPDATE_ONLYFIRST, \
             XBMC_UPDATE_LIBRARY, XBMC_HOST, XBMC_USERNAME, XBMC_PASSWORD, BACKLOG_FREQUENCY, DOWNLOADABLE_SEARCH_FREQUENCY, \
-            USE_TRAKT, TRAKT_USERNAME, TRAKT_PASSWORD, TRAKT_API, TRAKT_REMOVE_SHOW_WATCHLIST, TRAKT_REMOVE_WATCHLIST, TRAKT_USE_WATCHLIST, TRAKT_METHOD_ADD, TRAKT_START_PAUSED, TRAKT_BLACKLIST_NAME, TRAKT_NUM_EP, traktCheckerScheduler, TRAKT_USE_RECOMMENDED, TRAKT_SYNC, TRAKT_DEFAULT_INDEXER, \
+            USE_TRAKT, TRAKT_USERNAME, TRAKT_PASSWORD, TRAKT_API, TRAKT_REMOVE_SHOW_WATCHLIST, TRAKT_REMOVE_WATCHLIST, TRAKT_USE_WATCHLIST, TRAKT_METHOD_ADD, TRAKT_START_PAUSED, TRAKT_BLACKLIST_NAME, TRAKT_NUM_EP, traktCheckerScheduler, TRAKT_USE_RECOMMENDED, TRAKT_SYNC, TRAKT_DEFAULT_INDEXER, TRAKT_REMOVE_SERIESLIST, \
             USE_PLEX, PLEX_NOTIFY_ONSNATCH, PLEX_NOTIFY_ONDOWNLOAD, PLEX_NOTIFY_ONDOWNLOADABLE, PLEX_NOTIFY_ONSUBTITLEDOWNLOAD, PLEX_UPDATE_LIBRARY, \
             PLEX_SERVER_HOST, PLEX_HOST, PLEX_USERNAME, PLEX_PASSWORD, DEFAULT_BACKLOG_FREQUENCY, MIN_BACKLOG_FREQUENCY, BACKLOG_STARTUP, DEFAULT_DOWNLOADABLE_SEARCH_FREQUENCY, MIN_DOWNLOADABLE_SEARCH_FREQUENCY, DOWNLOADABLE_SEARCH_STARTUP, SKIP_REMOVED_FILES, \
             showUpdateScheduler, __INITIALIZED__, LAUNCH_BROWSER, UPDATE_SHOWS_ON_START, SORT_ARTICLE, showList, loadingShowList, \
@@ -533,10 +535,17 @@ def initialize(consoleLogging=True):
         CheckSection(CFG, 'Pushbullet')
         CheckSection(CFG, 'Subtitles')
 
-        # branch
+        # wanted branch
         BRANCH = check_setting_str(CFG, 'General', 'branch', '')
 
+        # current commit hash
+        CUR_COMMIT_HASH = check_setting_str(CFG, 'General', 'cur_commit_hash', '')
+
+        # current commit branch
+        CUR_COMMIT_BRANCH = check_setting_str(CFG, 'General', 'cur_commit_branch', '')
+
         ACTUAL_CACHE_DIR = check_setting_str(CFG, 'General', 'cache_dir', 'cache')
+
         # fix bad configs due to buggy code
         if ACTUAL_CACHE_DIR == 'None':
             ACTUAL_CACHE_DIR = 'cache'
@@ -634,7 +643,7 @@ def initialize(consoleLogging=True):
         NAMING_SPORTS_PATTERN = check_setting_str(CFG, 'General', 'naming_sports_pattern', '%SN - %A-D - %EN')
         NAMING_ANIME = check_setting_int(CFG, 'General', 'naming_anime', 3)
         NAMING_CUSTOM_SPORTS = bool(check_setting_int(CFG, 'General', 'naming_custom_sports', 0))
-        NAMING_MULTI_EP = bool(check_setting_int(CFG, 'General', 'naming_multi_ep', 1))
+        NAMING_MULTI_EP = check_setting_int(CFG, 'General', 'naming_multi_ep', 1)
         NAMING_FORCE_FOLDERS = naming.check_force_season_folders()
         NAMING_STRIP_YEAR = bool(check_setting_int(CFG, 'General', 'naming_strip_year', 0))
 
@@ -663,7 +672,7 @@ def initialize(consoleLogging=True):
 
         USENET_RETENTION = check_setting_int(CFG, 'General', 'usenet_retention', 500)
 
-        AUTOPOSTPROCESSER_FREQUENCY = check_setting_int(CFG, 'General', 'dailysearch_frequency',
+        AUTOPOSTPROCESSER_FREQUENCY = check_setting_int(CFG, 'General', 'autopostprocesser_frequency',
                                                         DEFAULT_AUTOPOSTPROCESSER_FREQUENCY)
         if AUTOPOSTPROCESSER_FREQUENCY < MIN_AUTOPOSTPROCESSER_FREQUENCY:
             AUTOPOSTPROCESSER_FREQUENCY = MIN_AUTOPOSTPROCESSER_FREQUENCY
@@ -719,6 +728,7 @@ def initialize(consoleLogging=True):
         NZBGET_CATEGORY = check_setting_str(CFG, 'NZBget', 'nzbget_category', 'tv')
         NZBGET_HOST = check_setting_str(CFG, 'NZBget', 'nzbget_host', '')
         NZBGET_USE_HTTPS = bool(check_setting_int(CFG, 'NZBget', 'nzbget_use_https', 0))
+        NZBGET_PRIORITY = check_setting_int(CFG, 'NZBget', 'nzbget_priority', 100)
 
         TORRENT_USERNAME = check_setting_str(CFG, 'TORRENT', 'torrent_username', '')
         TORRENT_PASSWORD = check_setting_str(CFG, 'TORRENT', 'torrent_password', '')
@@ -838,6 +848,7 @@ def initialize(consoleLogging=True):
         TRAKT_API = check_setting_str(CFG, 'Trakt', 'trakt_api', '')
         TRAKT_REMOVE_SHOW_WATCHLIST = bool(check_setting_int(CFG, 'Trakt', 'trakt_remove_show_watchlist', 0))
         TRAKT_REMOVE_WATCHLIST = bool(check_setting_int(CFG, 'Trakt', 'trakt_remove_watchlist', 0))
+        TRAKT_REMOVE_SERIESLIST = bool(check_setting_int(CFG, 'Trakt', 'trakt_remove_serieslist', 0))
         TRAKT_USE_WATCHLIST = bool(check_setting_int(CFG, 'Trakt', 'trakt_use_watchlist', 0))
         TRAKT_METHOD_ADD = check_setting_int(CFG, 'Trakt', 'trakt_method_add', 0)
         TRAKT_START_PAUSED = bool(check_setting_int(CFG, 'Trakt', 'trakt_start_paused', 0))
@@ -1378,6 +1389,8 @@ def save_config():
     # For passwords you must include the word `password` in the item_name and add `helpers.encrypt(ITEM_NAME, ENCRYPTION_VERSION)` in save_config()
     new_config['General'] = {}
     new_config['General']['branch'] = BRANCH
+    new_config['General']['cur_commit_hash'] = CUR_COMMIT_HASH
+    new_config['General']['cur_commit_branch'] = CUR_COMMIT_BRANCH
     new_config['General']['config_version'] = CONFIG_VERSION
     new_config['General']['encryption_version'] = int(ENCRYPTION_VERSION)
     new_config['General']['log_dir'] = ACTUAL_LOG_DIR if ACTUAL_LOG_DIR else 'Logs'
@@ -1583,6 +1596,7 @@ def save_config():
     new_config['NZBget']['nzbget_category'] = NZBGET_CATEGORY
     new_config['NZBget']['nzbget_host'] = NZBGET_HOST
     new_config['NZBget']['nzbget_use_https'] = int(NZBGET_USE_HTTPS)
+    new_config['NZBget']['nzbget_priority'] = NZBGET_PRIORITY
 
     new_config['TORRENT'] = {}
     new_config['TORRENT']['torrent_username'] = TORRENT_USERNAME
@@ -1710,6 +1724,7 @@ def save_config():
     new_config['Trakt']['trakt_api'] = TRAKT_API
     new_config['Trakt']['trakt_remove_show_watchlist'] = int(TRAKT_REMOVE_SHOW_WATCHLIST)
     new_config['Trakt']['trakt_remove_watchlist'] = int(TRAKT_REMOVE_WATCHLIST)
+    new_config['Trakt']['trakt_remove_serieslist'] = int(TRAKT_REMOVE_SERIESLIST)
     new_config['Trakt']['trakt_use_watchlist'] = int(TRAKT_USE_WATCHLIST)
     new_config['Trakt']['trakt_method_add'] = int(TRAKT_METHOD_ADD)
     new_config['Trakt']['trakt_start_paused'] = int(TRAKT_START_PAUSED)

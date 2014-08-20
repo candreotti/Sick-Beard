@@ -31,7 +31,7 @@ from sickbeard import db
 from sickbeard import classes
 from sickbeard import helpers
 from sickbeard import show_name_helpers
-from sickbeard.exceptions import ex
+from sickbeard.exceptions import ex, AuthException
 from sickbeard.helpers import sanitizeSceneName
 from sickbeard.bs4_parser import BS4Parser
 from unidecode import unidecode
@@ -74,6 +74,12 @@ class BitSoupProvider(generic.TorrentProvider):
 
         quality = Quality.sceneQuality(item[0], anime)
         return quality
+
+    def _checkAuth(self):
+        if not self.username or not self.password:
+            raise AuthException("Your authentication credentials for " + self.name + " are missing, check your config.")
+
+        return True
 
     def _doLogin(self):
 
@@ -191,8 +197,8 @@ class BitSoupProvider(generic.TorrentProvider):
                             try:
                                 title = link.getText()
                                 id = int(id)
-                                seeders = int(cells[9].getText())
-                                leechers = int(cells[10].getText())
+                                seeders = int(cells[10].getText())
+                                leechers = int(cells[11].getText())
                             except (AttributeError, TypeError):
                                 continue
 

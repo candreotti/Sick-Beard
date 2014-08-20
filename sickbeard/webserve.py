@@ -557,7 +557,7 @@ def _getEpisode(show, season=None, episode=None, absolute=None):
         return "Invalid show paramaters"
 
     if absolute:
-        epObj = showObj.getEpisode(absolute=int(absolute))
+        epObj = showObj.getEpisode(absolute_number=int(absolute))
     elif season and episode:
         epObj = showObj.getEpisode(int(season), int(episode))
     else:
@@ -1621,7 +1621,7 @@ class ConfigSearch(MainHandler):
 
     def saveSearch(self, use_nzbs=None, use_torrents=None, nzb_dir=None, sab_username=None, sab_password=None,
                    sab_apikey=None, sab_category=None, sab_host=None, nzbget_username=None, nzbget_password=None,
-                   nzbget_category=None, nzbget_host=None, nzbget_use_https=None, dailysearch_frequency=None,
+                   nzbget_category=None, nzbget_priority=100, nzbget_host=None, nzbget_use_https=None, dailysearch_frequency=None,
                    nzb_method=None, torrent_method=None, usenet_retention=None, backlog_frequency=None, downloadable_search_frequency=None,
                    download_propers=None, check_propers_interval=None, allow_high_priority=None,
                    backlog_startup=None, downloadable_search_startup=None, dailysearch_startup=None,
@@ -1670,6 +1670,7 @@ class ConfigSearch(MainHandler):
         sickbeard.NZBGET_CATEGORY = nzbget_category
         sickbeard.NZBGET_HOST = config.clean_host(nzbget_host)
         sickbeard.NZBGET_USE_HTTPS = config.checkbox_to_value(nzbget_use_https)
+        sickbeard.NZBGET_PRIORITY = int(nzbget_priority)
 
         sickbeard.TORRENT_USERNAME = torrent_username
         sickbeard.TORRENT_PASSWORD = torrent_password
@@ -2413,7 +2414,7 @@ class ConfigNotifications(MainHandler):
         sickbeard.TRAKT_REMOVE_WATCHLIST = config.checkbox_to_value(trakt_remove_watchlist)
         sickbeard.TRAKT_REMOVE_SERIESLIST = config.checkbox_to_value(trakt_remove_serieslist)
         sickbeard.TRAKT_USE_WATCHLIST = config.checkbox_to_value(trakt_use_watchlist)
-        sickbeard.TRAKT_METHOD_ADD = trakt_method_add
+        sickbeard.TRAKT_METHOD_ADD = int(trakt_method_add)
         sickbeard.TRAKT_START_PAUSED = config.checkbox_to_value(trakt_start_paused)
         sickbeard.TRAKT_BLACKLIST_NAME = trakt_blacklist_name
         sickbeard.TRAKT_USE_RECOMMENDED = config.checkbox_to_value(trakt_use_recommended)
@@ -3673,6 +3674,8 @@ class Home(MainHandler):
                                   'path': 'home/updateXBMC?showName=%s' % urllib.quote_plus(
                                       showObj.name.encode('utf-8')), 'requires': haveXBMC})
                 t.submenu.append({'title': 'Preview Rename', 'path': 'home/testRename?show=%d' % showObj.indexerid})
+                if sickbeard.USE_TRAKT:
+                    t.submenu.append({'title': 'Unlibrary Skipped', 'path': 'home/unlibrary?show=%d' % showObj.indexerid})
                 if sickbeard.USE_SUBTITLES and not sickbeard.showQueueScheduler.action.isBeingSubtitled(
                         showObj) and showObj.subtitles:
                     t.submenu.append(
@@ -3764,6 +3767,24 @@ class Home(MainHandler):
             out.append("S" + str(season) + ": " + ", ".join(names))
         return "<br/>".join(out)
 
+    def unlibrary (self, show=None): 
+
+        if show is None:
+            return self._genericMessage("Error", "Invalid show ID")
+
+        for showObj in sickbeard.showList:
+            if showObj.indexerid == int(show):
+                logger.log(u"Show: " + str(showObj.indexerid), logger.DEBUG)
+                ep_obj_list = showObj.getAllEpisodes()
+                for epObj in ep_obj_list: 
+                    if epObj.status in (SKIPPED,DOWNLOADABLE) and epObj.season != 0:
+                        logger.log(u"Attempting to unlibrary episode" + str(epObj.season) + "x" + str(epObj.episode) + "with status: " + str(epObj.status), logger.DEBUG)
+                        notifiers.trakt_notifier.unlibrary(epObj)
+                    
+        # just give it some time
+        time.sleep(cpu_presets[sickbeard.CPU_PRESET])
+
+        redirect("/home/displayShow?show=" + str(showObj.indexerid))
 
     def editShow(self, show=None, location=None, anyQualities=[], bestQualities=[], exceptions_list=[],
                  flatten_folders=None, paused=None, directCall=False, air_by_date=None, sports=None, dvdorder=None,

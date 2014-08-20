@@ -209,7 +209,7 @@ def filter_release_name(name, filter_words):
     Returns: False if the release name is OK, True if it contains one of the filter_words
     """
     if filter_words:
-        filters = [re.compile('(^|[\W_])%s($|[\W_])' % filter.strip(), re.I) for filter in filter_words.split(',')]
+        filters = [re.compile('.*%s.*' % filter.strip(), re.I) for filter in filter_words.split(',')]
         for regfilter in filters:
             if regfilter.search(name):
                 logger.log(u"" + name + " contains pattern: " + regfilter.pattern, logger.DEBUG)
@@ -232,6 +232,7 @@ def pickBestResult(results, show, quality_list=None):
     # find the best result for the current episode
     bestResult = None
     for cur_result in results:
+            
         logger.log("Quality of " + cur_result.name + " is " + Quality.qualityStrings[cur_result.quality])
 
         if bwl:
@@ -408,6 +409,14 @@ def searchForNeededEpisodes(show, episodes):
             if curEp in foundResults and bestResult.quality <= foundResults[curEp].quality:
                 continue
 
+            # filter out possible bad torrents from providers such as ezrss
+            if bestResult.resultType == "torrent" and sickbeard.TORRENT_METHOD != "blackhole":
+                bestResult.content = None
+                if not bestResult.url.startswith('magnet'):
+                    bestResult.content = bestResult.provider.getURL(bestResult.url)
+                    if not bestResult.content:
+                        continue
+            
             foundResults[curEp] = bestResult
 
     if not didSearch:
@@ -632,9 +641,8 @@ def searchProviders(show, season, episodes, type="wantEP", manualSearch=False):
                     u"Single-ep check result is neededEps: " + str(neededEps) + ", notNeededEps: " + str(notNeededEps),
                     logger.DEBUG)
 
-                if not neededEps:
-                    logger.log(u"All of these episodes were covered by single nzbs, ignoring this multi-ep result",
-                               logger.DEBUG)
+                if not notNeededEps:
+                    logger.log(u"All of these episodes were covered by single episode results, ignoring this multi-episode result", logger.DEBUG)
                     continue
 
                 # check if these eps are already covered by another multi-result
@@ -685,6 +693,14 @@ def searchProviders(show, season, episodes, type="wantEP", manualSearch=False):
             if not bestResult:
                 continue
 
+            # filter out possible bad torrents from providers such as ezrss
+            if bestResult.resultType == "torrent" and sickbeard.TORRENT_METHOD != "blackhole":
+                bestResult.content = None
+                if not bestResult.url.startswith('magnet'):
+                    bestResult.content = bestResult.provider.getURL(bestResult.url)
+                    if not bestResult.content:
+                        continue
+                    
             # add result if its not a duplicate and
             found = False
             for i, result in enumerate(finalResults):

@@ -96,6 +96,10 @@ class TVCache():
             myDB = self._getDB()
             myDB.action("DELETE FROM [" + self.providerID + "] WHERE time < ?", [int(time.mktime(curDate.timetuple()))])
 
+    def _get_title_and_url(self, item):
+        # override this in the provider if daily search has a different data layout to backlog searches
+        return self.provider._get_title_and_url(item)
+
     def _getRSSData(self):
 
         data = None
@@ -105,15 +109,15 @@ class TVCache():
     def _getDailyData(self):
         return None
 
-    def _checkAuth(self, data):
-        return True
+    def _checkAuth(self):
+        return self.provider._checkAuth()
 
     def _checkItemAuth(self, title, url):
         return True
 
     def updateCache(self):
 
-        if self.shouldUpdate() and self._checkAuth(None):
+        if self.shouldUpdate() and self._checkAuth():
             # as long as the http request worked we count this as an update
             data = self._getDailyData()
             if not data:
@@ -126,20 +130,16 @@ class TVCache():
             self.setLastUpdate()
 
             # parse data
-            if self._checkAuth(data):
-                cl = []
-                for item in data:
-                    title, url = self.provider._get_title_and_url(item)
-                    ci = self._parseItem(title, url)
-                    if ci is not None:
-                        cl.append(ci)
+            cl = []
+            for item in data:
+                title, url = self._get_title_and_url(item)
+                ci = self._parseItem(title, url)
+                if ci is not None:
+                    cl.append(ci)
 
-                if len(cl) > 0:
-                    myDB = self._getDB()
-                    myDB.mass_action(cl)
-            else:
-                raise AuthException(
-                    u"Your authentication credentials for " + self.provider.name + " are incorrect, check your config")
+            if len(cl) > 0:
+                myDB = self._getDB()
+                myDB.mass_action(cl)
 
         return []
 
@@ -366,15 +366,6 @@ class TVCache():
                 result.release_group = curReleaseGroup
                 result.version = curVersion
                 result.content = None
-
-                # validate torrent file if not magnet link to avoid invalid torrent links
-                if self.provider.providerType == sickbeard.providers.generic.GenericProvider.TORRENT:
-                    if sickbeard.TORRENT_METHOD != "blackhole":
-                        client = clients.getClientIstance(sickbeard.TORRENT_METHOD)()
-                        result = client._get_torrent_hash(result)
-                        if not result.hash:
-                            logger.log(u'Unable to get torrent hash for ' + title + ', skipping it', logger.DEBUG)
-                            continue
 
                 # add it to the list
                 if epObj not in neededEps:
