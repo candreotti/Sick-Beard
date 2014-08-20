@@ -3784,7 +3784,7 @@ class Home(MainHandler):
         # just give it some time
         time.sleep(cpu_presets[sickbeard.CPU_PRESET])
 
-        redirect("/home/displayShow?show=" + str(showObj.indexerid))
+        redirect("/home/displayShow?show=" + str(show))
 
     def editShow(self, show=None, location=None, anyQualities=[], bestQualities=[], exceptions_list=[],
                  flatten_folders=None, paused=None, directCall=False, air_by_date=None, sports=None, dvdorder=None,
