@@ -2916,9 +2916,9 @@ class NewHomeAddShows(MainHandler):
                         if tshow["imdb_id"] in (show["show"]["imdb_id"] for show in not_liked_show["items"] if show["type"] == "show"):	
                             #logger.log(u"Show " + tshow["title"] + " is in blacklist traktv List, remove from trending", logger.DEBUG)
                             t_trending_shows.remove(tshow)
-                        else:
+                        #else:
                             #logger.log(u"Show " + tshow["title"] + " is not in sickbeard List/traktv Library/blacklist traktv list, keep from trending", logger.DEBUG)
-                    else:  
+                    #else:  
                         #logger.log(u"Show " + tshow["title"] + " is not in sickbeard List/traktv Library, keep from trending", logger.DEBUG)
 
         t.trending_shows = deepcopy(sorted(t_trending_shows, key=lambda x: x["ratings"]["loved"], reverse=True))
