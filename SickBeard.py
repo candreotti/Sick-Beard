@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env pythcn2
 # Author: Nic Wolfe <nic@wolfeden.ca>
 # URL: http://code.google.com/p/sickbeard/
 #
@@ -83,6 +83,7 @@ class SickBeard(object):
         self.webserver = None
         self.forceUpdate = False
         self.forcedPort = None
+        self.forcedHost = None
         self.noLaunch = False
 
     def help_message(self):
@@ -107,6 +108,7 @@ class SickBeard(object):
             help_msg += "                --pidfile=<path>    Combined with --daemon creates a pidfile (full path including filename)\n"
 
         help_msg += "    -p <port>   --port=<port>       Override default/configured port to listen on\n"
+        help_msg += "    -ip <host>  --host=<host>       Override default/configured ip to listen on\n"
         help_msg += "                --datadir=<path>    Override folder (full path) as location for\n"
         help_msg += "                                    storing database, configfile, cache, logfiles \n"
         help_msg += "                                    Default: " + sickbeard.PROG_DIR + "\n"
@@ -157,7 +159,7 @@ class SickBeard(object):
 
         try:
             opts, args = getopt.getopt(sys.argv[1:], "hfqdp::",
-                                       ['help', 'forceupdate', 'quiet', 'nolaunch', 'daemon', 'pidfile=', 'port=',
+                                       ['help', 'forceupdate', 'quiet', 'nolaunch', 'daemon', 'pidfile=', 'port=','host=',
                                         'datadir=', 'config=', 'noresize'])  # @UnusedVariable
         except getopt.GetoptError:
             sys.exit(self.help_message())
@@ -187,6 +189,13 @@ class SickBeard(object):
                     self.forcedPort = int(a)
                 except ValueError:
                     sys.exit("Port: " + str(a) + " is not a number. Exiting.")
+
+            # Override default/configured host
+            if o in ('-ip', '--host'):
+                try:
+                    self.forcedHost = str(a)
+                except ValueError:
+                    sys.exit("Port: " + str(a) + " is not a string. Exiting.")
 
             # Run as a double forked daemon
             if o in ('-d', '--daemon'):
@@ -305,20 +314,24 @@ class SickBeard(object):
         else:
             self.startPort = sickbeard.WEB_PORT
 
+        if self.forcedHost:
+            logger.log(u"Forcing web server to host " + str(self.forcedHost))
+            self.webhost = self.forcedHost
+        else:
+            # sickbeard.WEB_HOST is available as a configuration value in various
+            # places but is not configurable. It is supported here for historic reasons.
+            if sickbeard.WEB_HOST and sickbeard.WEB_HOST != '0.0.0.0':
+                self.webhost = sickbeard.WEB_HOST
+            else:
+                if sickbeard.WEB_IPV6:
+                    self.webhost = '::'
+                else:
+                    self.webhost = '0.0.0.0'
+
         if sickbeard.WEB_LOG:
             self.log_dir = sickbeard.LOG_DIR
         else:
             self.log_dir = None
-
-        # sickbeard.WEB_HOST is available as a configuration value in various
-        # places but is not configurable. It is supported here for historic reasons.
-        if sickbeard.WEB_HOST and sickbeard.WEB_HOST != '0.0.0.0':
-            self.webhost = sickbeard.WEB_HOST
-        else:
-            if sickbeard.WEB_IPV6:
-                self.webhost = '::'
-            else:
-                self.webhost = '0.0.0.0'
 
         # web server options
         self.web_options = {
