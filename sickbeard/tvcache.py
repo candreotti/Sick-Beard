@@ -350,13 +350,11 @@ class TVCache():
                                Quality.qualityStrings[curQuality], logger.DEBUG)
                     continue
 
-
                 # build a result object
                 title = curResult["name"]
                 url = curResult["url"]
 
                 logger.log(u"Found result " + title + " at " + url)
-
 
                 result = self.provider.getResult([epObj])
                 result.show = showObj

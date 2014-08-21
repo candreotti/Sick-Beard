@@ -66,8 +66,8 @@ class DailySearcher():
             curDate = datetime.date.today()
 
             myDB = db.DBConnection()
-            sqlResults = myDB.select("SELECT * FROM tv_episodes WHERE status in (?,?,?) AND airdate >= ? AND airdate <= ?",
-                                     [common.UNAIRED, common.WANTED, common.SKIPPED, fromDate.toordinal(), curDate.toordinal()])
+            sqlResults = myDB.select("SELECT * FROM tv_episodes WHERE status in (?,?,?,?) AND airdate >= ? AND airdate <= ?",
+                                     [common.UNAIRED, common.WANTED, common.SKIPPED, common.DOWNLOADABLE, fromDate.toordinal(), curDate.toordinal()])
 
             sql_l = []
             for sqlEp in sqlResults:
@@ -107,7 +107,7 @@ class DailySearcher():
 
                     sql_l.append(ep.get_sql())
 
-                    if ep.status in (common.WANTED, common.SKIPPED):
+                    if ep.status in (common.WANTED, common.SKIPPED, common.DOWNLOADABLE):
                         dailysearch_queue_item = sickbeard.search_queue.DailySearchQueueItem(show, [ep])
                         sickbeard.searchQueueScheduler.action.add_item(dailysearch_queue_item)
             else:
