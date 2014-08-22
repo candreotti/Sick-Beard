@@ -7,8 +7,7 @@ Feature list of this branch:
 - Support for TNTVillage torrent provider
 - Language default to IT for new show/importing existing shows (if available on TVDB)
 - Automatic remove of downloaded torrent on trasmission client
-- Added search for file name in not dotted notation
-- trackt intregration enhancement: watched episode on show added on sickbeard are marked as Archived
+- trackt intregration enhancement: watched episode on show added on sickbeard are marked as Ignored
 - trackt intregration enhancement: always have a numebr (configurable) of unwatched episode for not paused show
 - Chech availability of torrent file and mark episode to DOWNLOADABLE
 
