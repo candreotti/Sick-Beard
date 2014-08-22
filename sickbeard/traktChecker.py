@@ -340,6 +340,8 @@ class TraktChecker():
             for x in range(0,num_of_ep):
 
                 last_s = [last_x_s for last_x_s in last_per_season if last_x_s['season'] == s]
+                if last_s is None:
+                    break
                 if episode == 0 or (s*100+e) <= (int(last_s[0]['season'])*100+int(last_s[0]['episodes'])): 
 
                     if (s*100+e) > (season*100+episode):
@@ -357,12 +359,11 @@ class TraktChecker():
                         if self.episode_in_watchlist(newShow, s, e):
                             if not self.update_watchlist("episode", "remove", newShow, s, e):
                                 return False
+                    e = e + 1
 
-                if (s*100+e) == (int(last_s[0]['season'])*100+int(last_s[0]['episodes'])):
+                elif (s*100+e) == (int(last_s[0]['season'])*100+int(last_s[0]['episodes'])):
                     s = s + 1
                     e = 1
-                else:
-                    e = e + 1
 				
             if wanted:
                 self.startBacklog(newShow)
