@@ -1290,6 +1290,31 @@ class CMD_SickBeard(ApiCall):
                 "api_commands": sorted(_functionMaper.keys())}
         return _responds(RESULT_SUCCESS, data)
 
+class CMD_SickBeardDBVersion(ApiCall):
+    _help = {"desc": "display sickbeard database version"}
+
+    def __init__(self, handler, args, kwargs):
+        # required
+        # optional
+        # super, missing, help
+        ApiCall.__init__(self, handler, args, kwargs)
+
+    def run(self):
+        """ display sickbeard database version"""
+
+        cacheDB = db.DBConnection('cache.db')
+        failedDB = db.DBConnection('failed.db')
+        sickbeardDB = db.DBConnection('sickbeard.db')
+
+        cachedb_version = cacheDB.select("select * from db_version")
+        faileddb_version = failedDB.select("select * from db_version")
+        sickbeard_version = sickbeardDB.select("select * from db_version")
+
+
+        data = {"cacheDB": int(cachedb_version[0]["db_version"]), "failedDB": int(faileddb_version[0]["db_version"]),
+                "sickbeardDB": int(sickbeard_version[0]["db_version"])}
+
+        return _responds(RESULT_SUCCESS, data)
 
 class CMD_SickBeardAddRootDir(ApiCall):
     _help = {"desc": "add a sickbeard user's parent directory",
@@ -2595,6 +2620,7 @@ _functionMaper = {"help": CMD_Help,
                   "history.trim": CMD_HistoryTrim,
                   "logs": CMD_Logs,
                   "sb": CMD_SickBeard,
+                  "sb.databaseversion": CMD_SickBeardDBVersion,
                   "sb.addrootdir": CMD_SickBeardAddRootDir,
                   "sb.checkscheduler": CMD_SickBeardCheckScheduler,
                   "sb.deleterootdir": CMD_SickBeardDeleteRootDir,
