@@ -424,7 +424,7 @@ class TraktChecker():
                                 if not self.update_watchlist("episode", "add", newShow, episode["season"], episode["number"]):
                                     return False
                     else:
-                        self.todoWanted.append((indexer_id, episode["season"], episode["number"]))
+                        self.todoWanted.append((newShow.indexerid, episode["season"], episode["number"]))
                 self.startBacklog(newShow)
             except TypeError:
                 logger.log(u"Could not parse the output from trakt for " + show["title"], logger.DEBUG)
