@@ -267,7 +267,8 @@ class TraktChecker():
 
         num_of_download = sickbeard.TRAKT_NUM_EP
 
-        if num_of_download == 0 or self.EpisodeWatched == 'NULL':
+        #if num_of_download == 0 or self.EpisodeWatched == 'NULL':
+        if self.EpisodeWatched == 'NULL':
             return True
 
         logger.log(u"Start looking if having " + str(num_of_download) + " episode not watched", logger.DEBUG)
