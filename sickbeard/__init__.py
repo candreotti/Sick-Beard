@@ -1034,7 +1034,7 @@ def initialize(consoleLogging=True):
                                                                          0))
             if hasattr(curTorrentProvider, 'page'):
                 curTorrentProvider.page = check_setting_int(CFG, curTorrentProvider.getID().upper(),
-                                                                         curTorrentProvider.getID() + '_page', 0)
+                                                                         curTorrentProvider.getID() + '_page', 1)
             if hasattr(curTorrentProvider, 'cat'):
                 curTorrentProvider.cat = check_setting_int(CFG, curTorrentProvider.getID().upper(),
                                                                          curTorrentProvider.getID() + '_cat', 0)

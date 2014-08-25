@@ -2194,7 +2194,7 @@ class ConfigProviders(MainHandler):
                 try:
                     curTorrentProvider.page = int(str(kwargs[curTorrentProvider.getID() + '_page']).strip())
                 except:
-                    curTorrentProvider.page = 0
+                    curTorrentProvider.page = 1
 
             if hasattr(curTorrentProvider, 'cat'):
                 try:
