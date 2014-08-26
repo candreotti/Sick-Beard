@@ -1310,8 +1310,9 @@ class CMD_SickBeardDBVersion(ApiCall):
         faileddb_version = failedDB.select("select * from db_version")
         sickbeard_version = sickbeardDB.select("select * from db_version")
 
-        data = {"cacheDB": int(cachedb_version[0]["db_version"]), "failedDB": int(faileddb_version[0]["db_version"]),
-                "sickbeardDB": int(sickbeard_version[0]["db_version"])}
+        data = {"cache.db": int(cachedb_version[0]["db_version"]),
+                "failed.db": int(faileddb_version[0]["db_version"]),
+                "failed.db": int(sickbeard_version[0]["db_version"])}
 
         return _responds(RESULT_SUCCESS, data)
 
