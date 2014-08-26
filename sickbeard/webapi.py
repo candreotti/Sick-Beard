@@ -1335,17 +1335,12 @@ class CMD_SickBeardExportDB(ApiCall):
         for db_string in dbs_string:
             data_dict = {}
             DB = db.DBConnection(db_string)
-            #failedDB = db.DBConnection('failed.db')
-            #sickbeardDB = db.DBConnection('sickbeard.db')
 
             db_tables = DB.select("SELECT name FROM sqlite_master WHERE type='table'")
-            #faileddb_tables = failedDB.select(".tables")
-            #sickbeard_tables = sickbeardDB.select(".tables")
 
             data_db = []
             for table in db_tables:
                 data_row = {}
-                logger.log(u"table: " + str(table["name"]), logger.DEBUG)
                 table_name=table["name"]
                 results = DB.select("SELECT * from %s" % (table["name"]))
                 data_row["table"] = table["name"]
