@@ -1310,10 +1310,55 @@ class CMD_SickBeardDBVersion(ApiCall):
         faileddb_version = failedDB.select("select * from db_version")
         sickbeard_version = sickbeardDB.select("select * from db_version")
 
-
         data = {"cacheDB": int(cachedb_version[0]["db_version"]), "failedDB": int(faileddb_version[0]["db_version"]),
                 "sickbeardDB": int(sickbeard_version[0]["db_version"])}
 
+        return _responds(RESULT_SUCCESS, data)
+
+class CMD_SickBeardExportDB(ApiCall):
+    _help = {"desc": "export sickbeard database"}
+
+    def __init__(self, handler, args, kwargs):
+        # required
+        # optional
+        # super, missing, help
+        ApiCall.__init__(self, handler, args, kwargs)
+
+    def run(self):
+        """ export sickbeard database"""
+
+	dbs_string = ['cache.db','failed.db','sickbeard.db']
+
+        data = {}
+        data_dbs = []
+
+        for db_string in dbs_string:
+            data_dict = {}
+            DB = db.DBConnection(db_string)
+            #failedDB = db.DBConnection('failed.db')
+            #sickbeardDB = db.DBConnection('sickbeard.db')
+
+            db_tables = DB.select("SELECT name FROM sqlite_master WHERE type='table'")
+            #faileddb_tables = failedDB.select(".tables")
+            #sickbeard_tables = sickbeardDB.select(".tables")
+
+            data_db = []
+            for table in db_tables:
+                data_row = {}
+                logger.log(u"table: " + str(table["name"]), logger.DEBUG)
+                table_name=table["name"]
+                results = DB.select("SELECT * from %s" % (table["name"]))
+                data_row["table"] = table["name"]
+                data_row["rows"] = [dict(x) for x in results]
+                data_db.append(data_row)
+
+            data_dict["database"] = db_string
+            data_dict["data"] = data_db
+
+            data_dbs.append(data_dict)
+
+        data = json.dumps(data_dbs)
+            
         return _responds(RESULT_SUCCESS, data)
 
 class CMD_SickBeardAddRootDir(ApiCall):
@@ -2621,6 +2666,7 @@ _functionMaper = {"help": CMD_Help,
                   "logs": CMD_Logs,
                   "sb": CMD_SickBeard,
                   "sb.databaseversion": CMD_SickBeardDBVersion,
+                  "sb.exportdatabase": CMD_SickBeardExportDB,
                   "sb.addrootdir": CMD_SickBeardAddRootDir,
                   "sb.checkscheduler": CMD_SickBeardCheckScheduler,
                   "sb.deleterootdir": CMD_SickBeardDeleteRootDir,
