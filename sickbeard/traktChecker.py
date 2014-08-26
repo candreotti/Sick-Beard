@@ -188,7 +188,6 @@ class TraktChecker():
                 logger.log(u"Episode watchlist is empty", logger.DEBUG)
                 return True 
             for show in self.EpisodeWatchlist:
-                logger.log(u"show: " + str(show), logger.WARNING)
                 for episode in show["episodes"]:
                     newShow = helpers.findCertainShowFromIMDB(sickbeard.showList, show["imdb_id"])
                     if newShow is not None:
