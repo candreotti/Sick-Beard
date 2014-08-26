@@ -128,6 +128,7 @@ class EmailNotifier:
         ep_name: The name of the episode that is Available
         title: The title of the notification (optional)
         """
+        ep_name = ep_name.encode('utf-8', 'replace')
 
         if not sickbeard.USE_EMAIL:
             logger.log("Notification for Email not enabled, skipping this notification", logger.DEBUG)
