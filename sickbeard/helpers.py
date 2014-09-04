@@ -226,7 +226,7 @@ def findCertainShow(showList, indexerid):
 def findCertainShowFromIMDB(showList, imdbid):
     
     results = []
-    if showList and indexerid:
+    if showList and imdbid:
         results = filter(lambda x: str(x.imdbid) == str(imdbid), showList)
 
     if len(results) == 0:
