@@ -1028,10 +1028,6 @@ def initialize(consoleLogging=True):
                 curTorrentProvider.search_fallback = bool(check_setting_int(CFG, curTorrentProvider.getID().upper(),
                                                                             curTorrentProvider.getID() + '_search_fallback',
                                                                             0))
-            if hasattr(curTorrentProvider, 'backlog_only'):
-                curTorrentProvider.backlog_only = bool(check_setting_int(CFG, curTorrentProvider.getID().upper(),
-                                                                         curTorrentProvider.getID() + '_backlog_only',
-                                                                         0))
             if hasattr(curTorrentProvider, 'page'):
                 curTorrentProvider.page = check_setting_int(CFG, curTorrentProvider.getID().upper(),
                                                                          curTorrentProvider.getID() + '_page', 1)
@@ -1041,8 +1037,14 @@ def initialize(consoleLogging=True):
             if hasattr(curTorrentProvider, 'subtitle'):
                 curTorrentProvider.subtitle = bool(check_setting_int(CFG, curTorrentProvider.getID().upper(),
                                                                          curTorrentProvider.getID() + '_subtitle', 0))
-
-
+            if hasattr(curTorrentProvider, 'enable_daily'):
+                curTorrentProvider.enable_daily = bool(check_setting_int(CFG, curTorrentProvider.getID().upper(),
+                                                                         curTorrentProvider.getID() + '_enable_daily',
+                                                                         1))
+            if hasattr(curTorrentProvider, 'enable_backlog'):
+                curTorrentProvider.enable_backlog = bool(check_setting_int(CFG, curTorrentProvider.getID().upper(),
+                                                                           curTorrentProvider.getID() + '_enable_backlog',
+                                                                           1))
 
         for curNzbProvider in [curProvider for curProvider in providers.sortedProviderList() if
                                curProvider.providerType == GenericProvider.NZB]:
@@ -1062,10 +1064,15 @@ def initialize(consoleLogging=True):
                 curNzbProvider.search_fallback = bool(check_setting_int(CFG, curNzbProvider.getID().upper(),
                                                                         curNzbProvider.getID() + '_search_fallback',
                                                                         0))
-            if hasattr(curNzbProvider, 'backlog_only'):
-                curNzbProvider.backlog_only = bool(check_setting_int(CFG, curNzbProvider.getID().upper(),
-                                                                     curNzbProvider.getID() + '_backlog_only',
-                                                                     0))
+            if hasattr(curNzbProvider, 'enable_daily'):
+                curNzbProvider.enable_daily = bool(check_setting_int(CFG, curNzbProvider.getID().upper(),
+                                                                     curNzbProvider.getID() + '_enable_daily',
+                                                                     1))
+
+            if hasattr(curNzbProvider, 'enable_backlog'):
+                curNzbProvider.enable_backlog = bool(check_setting_int(CFG, curNzbProvider.getID().upper(),
+                                                                       curNzbProvider.getID() + '_enable_backlog',
+                                                                       1))
 
         if not os.path.isfile(CONFIG_FILE):
             logger.log(u"Unable to find '" + CONFIG_FILE + "', all settings will be default!", logger.DEBUG)
@@ -1188,6 +1195,7 @@ def initialize(consoleLogging=True):
 
         __INITIALIZED__ = True
         return True
+
 
 def start():
     global __INITIALIZED__, backlogSearchScheduler, downloadableSearchScheduler, \
@@ -1352,6 +1360,7 @@ def halt():
 
             __INITIALIZED__ = False
             started = False
+
 
 def sig_handler(signum=None, frame=None):
     if type(signum) != type(None):
@@ -1539,9 +1548,12 @@ def save_config():
         if hasattr(curTorrentProvider, 'search_fallback'):
             new_config[curTorrentProvider.getID().upper()][curTorrentProvider.getID() + '_search_fallback'] = int(
                 curTorrentProvider.search_fallback)
-        if hasattr(curTorrentProvider, 'backlog_only'):
-            new_config[curTorrentProvider.getID().upper()][curTorrentProvider.getID() + '_backlog_only'] = int(
-                curTorrentProvider.backlog_only)
+        if hasattr(curTorrentProvider, 'enable_daily'):
+            new_config[curTorrentProvider.getID().upper()][curTorrentProvider.getID() + '_enable_daily'] = int(
+                curTorrentProvider.enable_daily)
+        if hasattr(curTorrentProvider, 'enable_backlog'):
+            new_config[curTorrentProvider.getID().upper()][curTorrentProvider.getID() + '_enable_backlog'] = int(
+                curTorrentProvider.enable_backlog)
         if hasattr(curTorrentProvider, 'page'):
             new_config[curTorrentProvider.getID().upper()][curTorrentProvider.getID() + '_page'] = int(
                 curTorrentProvider.page)
@@ -1568,9 +1580,12 @@ def save_config():
         if hasattr(curNzbProvider, 'search_fallback'):
             new_config[curNzbProvider.getID().upper()][curNzbProvider.getID() + '_search_fallback'] = int(
                 curNzbProvider.search_fallback)
-        if hasattr(curNzbProvider, 'backlog_only'):
-            new_config[curNzbProvider.getID().upper()][curNzbProvider.getID() + '_backlog_only'] = int(
-                curNzbProvider.backlog_only)
+        if hasattr(curNzbProvider, 'enable_daily'):
+            new_config[curNzbProvider.getID().upper()][curNzbProvider.getID() + '_enable_daily'] = int(
+                curNzbProvider.enable_daily)
+        if hasattr(curNzbProvider, 'enable_backlog'):
+            new_config[curNzbProvider.getID().upper()][curNzbProvider.getID() + '_enable_backlog'] = int(
+                curNzbProvider.enable_backlog)
 
     new_config['NZBs'] = {}
     new_config['NZBs']['nzbs'] = int(NZBS)

@@ -210,13 +210,10 @@ def _remove_file_failed(file):
     except:
         pass
 
-
 def findCertainShow(showList, indexerid):
-    if not showList:
-        return None
 
     results = []
-    if indexerid:
+    if showList and indexerid:
         results = filter(lambda x: int(x.indexerid) == int(indexerid), showList)
 
     if len(results) == 0:
@@ -227,11 +224,9 @@ def findCertainShow(showList, indexerid):
         return results[0]
 
 def findCertainShowFromIMDB(showList, imdbid):
-    if not showList:
-        return None
     
     results = []
-    if imdbid:
+    if showList and indexerid:
         results = filter(lambda x: str(x.imdbid) == str(imdbid), showList)
 
     if len(results) == 0:
