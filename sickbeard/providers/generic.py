@@ -255,10 +255,15 @@ class GenericProvider:
 
         searched_scene_season = None
         for epObj in episodes:
-            # check cache for results
-            cacheResult = self.cache.searchCache([epObj], manualSearch)
-            if len(cacheResult):
-                results.update({epObj.episode: cacheResult[epObj]})
+            # search cache for episode result
+            cacheResult = self.cache.searchCache(epObj, manualSearch)
+            if cacheResult:
+                if epObj not in results:
+                    results = [cacheResult]
+                else:
+                    results.append(cacheResult)
+
+                # found result, search next episode
                 continue
 
             # skip if season already searched
@@ -347,13 +352,13 @@ class GenericProvider:
                     actual_season = season
                     actual_episodes = parse_result.episode_numbers
             else:
-                if not (parse_result.is_air_by_date or parse_result.is_sports):
+                if not (parse_result.is_air_by_date):
                     logger.log(
                         u"This is supposed to be a date search but the result " + title + " didn't parse as one, skipping it",
                         logger.DEBUG)
                     addCacheEntry = True
                 else:
-                    airdate = parse_result.air_date.toordinal() if parse_result.air_date else parse_result.sports_air_date.toordinal()
+                    airdate = parse_result.air_date.toordinal()
                     myDB = db.DBConnection()
                     sql_results = myDB.select(
                         "SELECT season, episode FROM tv_episodes WHERE showid = ? AND airdate = ?",
