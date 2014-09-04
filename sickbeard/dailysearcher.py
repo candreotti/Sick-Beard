@@ -73,7 +73,7 @@ class DailySearcher():
                             sn_sk = show_sk[0]["season"]
                             ep_sk = show_sk[0]["episode"]
                             if (int(sn_sk)*100+int(ep_sk)) < (int(sqlEp["season"])*100+int(sqlEp["episode"])) or not show_sk:
-                                logger.log(u"New episode " + ep.prettyName() + " airs today, setting status to WANTED, due to trakt integration")
+                                logger.log(u"New episode " + ep.prettyName() + " airs today, setting status to SKIPPED, due to trakt integration")
                                 ep.status = common.SKIPPED
                             else:
                                 logger.log(u"New episode " + ep.prettyName() + " airs today, setting status to WANTED")
