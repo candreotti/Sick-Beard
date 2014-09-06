@@ -46,7 +46,7 @@ class DailySearcher():
 
         myDB = db.DBConnection()
         sqlResults = myDB.select("SELECT * FROM tv_episodes WHERE status in (?,?,?,?) AND season > 0 AND airdate <= ?",
-                                 [common.UNAIRED, common.WANTED, common.SKIPPED, common.DOWNLOADABLE, curDate])
+                                 [common.UNAIRED, common.WANTED, common.SKIPPED, curDate])
 
         sql_l = []
         for sqlEp in sqlResults:
