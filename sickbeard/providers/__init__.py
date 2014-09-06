@@ -37,7 +37,8 @@ __all__ = ['ezrss',
            'torrentbytes',
            'animezb',
            'freshontv',
-           'bitsoup'
+           'bitsoup',
+           't411'
 ]
 
 import sickbeard
@@ -187,7 +188,7 @@ def makeTorrentRssProvider(configString):
 
 
 def getDefaultNewznabProviders():
-    return 'Sick Beard Index|http://lolo.sickbeard.com/|0|5030,5040|0|eponly|0|0|0!!!NZBs.org|https://nzbs.org/|0|5030,5040|0|eponly|0|0|0!!!Usenet-Crawler|https://www.usenet-crawler.com/|0|5030,5040|0|eponly|0|0|0'
+    return 'Sick Beard Index|http://lolo.sickbeard.com/|0|5030,5040|0|eponly|0|0|0!!!NZBs.org|https://nzbs.org/||5030,5040|0|eponly|0|0|0!!!Usenet-Crawler|https://www.usenet-crawler.com/||5030,5040|0|eponly|0|0|0'
 
 
 def getProviderModule(name):

@@ -20,7 +20,7 @@
 
 import base64
 from httplib import HTTPSConnection, HTTPException
-from urllib import urlencode
+import json
 from ssl import SSLError
 import sickbeard
 from sickbeard import logger, common
@@ -89,7 +89,7 @@ class PushbulletNotifier:
             testMessage = True
             try:
                 logger.log(u"Testing Pushbullet authentication and retrieving the device list.", logger.DEBUG)
-                http_handler.request(method, uri, None, headers={'Authorization': 'Basic %s:' % authString, 'Content-Type': 'application/x-www-form-urlencoded'})
+                http_handler.request(method, uri, None, headers={'Authorization': 'Basic %s:' % authString})
             except (SSLError, HTTPException):
                 logger.log(u"Pushbullet notification failed.", logger.ERROR)
                 return False
@@ -101,8 +101,9 @@ class PushbulletNotifier:
                     'body': message.encode('utf-8'),
                     'device_iden': pushbullet_device,
                     'type': notificationType}
-                http_handler.request(method, uri, body=urlencode(data),
-                                     headers={'Authorization': 'Basic %s' % authString, 'Content-Type': 'application/x-www-form-urlencoded'})
+                data = json.dumps(data)
+                http_handler.request(method, uri, body=data,
+                                     headers={'Content-Type': 'application/json', 'Authorization': 'Basic %s' % authString})
                 pass
             except (SSLError, HTTPException):
                 return False
