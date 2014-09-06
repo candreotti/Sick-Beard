@@ -1603,7 +1603,7 @@ class TVEpisode(object):
             if sqlResults[0]["is_proper"]:
                 self.is_proper = int(sqlResults[0]["is_proper"])
 
-            if sqlResults[0]["torrent_hash"]:
+            if sqlResults[0]["torrent_hash"] is not None:
                 self.torrent_hash = sqlResults[0]["torrent_hash"]
 
             if sqlResults[0]["version"]:

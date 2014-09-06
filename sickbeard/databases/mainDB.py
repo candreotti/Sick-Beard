@@ -27,7 +27,7 @@ from sickbeard import encodingKludge as ek
 from sickbeard.name_parser.parser import NameParser, InvalidNameException, InvalidShowException
 
 MIN_DB_VERSION = 9  # oldest db version we support migrating from
-MAX_DB_VERSION = 42
+MAX_DB_VERSION = 43
 
 class MainSanityCheck(db.DBSanityCheck):
     def check(self):
@@ -712,7 +712,7 @@ class ConvertInfoToIndexerScheme(ConvertIMDBInfoToIndexerScheme):
 
         self.connection.action("ALTER TABLE info RENAME TO tmp_info")
         self.connection.action(
-            "CREATE TABLE info (last_backlog NUMERIC, last_indexer NUMERIC, last_proper_search NUMERIC, last_downloadablesearch, NUMERIC)")
+            "CREATE TABLE info (last_backlog NUMERIC, last_indexer NUMERIC, last_proper_search NUMERIC, last_downloadablesearch NUMERIC)")
         self.connection.action(
             "INSERT INTO info(last_backlog, last_indexer, last_proper_search, last_downloadablesearch) SELECT last_backlog, last_tvdb, last_proper_search, last_downloadablesearch FROM tmp_info")
         self.connection.action("DROP TABLE tmp_info")
@@ -955,3 +955,26 @@ class AddVersionToTvEpisodes(AddIndexerMapping):
         self.addColumn("history", "version", "NUMERIC", "-1")
 
         self.incDBVersion()
+
+class FixInfoTable(AddIndexerMapping):
+    def test(self):
+        return self.checkDBVersion() >= 43
+
+    def execute(self):
+	backupDatabase(self.checkDBVersion())
+
+        logger.log(u"Fixing Info table")
+
+        if self.hasTable("tmp_info"):
+            logger.log(u"Removing temp info tables left behind from previous updates...")
+            self.connection.action("DROP TABLE tmp_info")
+
+        self.connection.action("ALTER TABLE info RENAME TO tmp_info")
+        self.connection.action(
+            "CREATE TABLE info (last_backlog NUMERIC, last_indexer NUMERIC, last_proper_search NUMERIC, last_downloadablesearch NUMERIC)")
+        self.connection.action(
+            "INSERT INTO info(last_backlog, last_indexer, last_proper_search, last_downloadablesearch) SELECT last_backlog, last_indexer, last_proper_search, last_downloadablesearch FROM tmp_info")
+        self.connection.action("DROP TABLE tmp_info")
+
+        self.incDBVersion()
+
