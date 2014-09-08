@@ -162,8 +162,12 @@ class DailySearchQueueItem(generic_queue.QueueItem):
                 for result in foundResults:
                     # just use the first result for now
                     if not result.episodes[0].show.paused:
-                        logger.log(u"Downloading " + result.name + " from " + result.provider.name)
-                        search.snatchEpisode(result)
+                        if result.episodes[0].show.lookIfDownloadable(result.episodes[0].season, result.episodes[0].episode,  result.episodes[0].quality, False):
+                            logger.log(u"Mark Downloadable " + result.name + " from " + result.provider.name)
+                            search.downloadableEpisode(result)
+                        elif result.episodes[0].show.wantEpisode(result.episodes[0].season, result.episodes[0].episode,  result.episodes[0].quality, False):
+                            logger.log(u"Downloading " + result.name + " from " + result.provider.name)
+                            search.snatchEpisode(result)
                     else:
                         logger.log(u"Mark Downloadable " + result.name + " from " + result.provider.name)
                         search.downloadableEpisode(result)
