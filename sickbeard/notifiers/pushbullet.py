@@ -17,7 +17,7 @@
 # You should have received a copy of the GNU General Public License
 # along with Sick Beard. If not, see <http://www.gnu.org/licenses/>.
 
-
+import socket
 import base64
 from httplib import HTTPSConnection, HTTPException
 import json
@@ -90,7 +90,7 @@ class PushbulletNotifier:
             try:
                 logger.log(u"Testing Pushbullet authentication and retrieving the device list.", logger.DEBUG)
                 http_handler.request(method, uri, None, headers={'Authorization': 'Basic %s:' % authString})
-            except (SSLError, HTTPException):
+            except (SSLError, HTTPException, socket.error):
                 logger.log(u"Pushbullet notification failed.", logger.ERROR)
                 return False
         else:
@@ -105,7 +105,7 @@ class PushbulletNotifier:
                 http_handler.request(method, uri, body=data,
                                      headers={'Content-Type': 'application/json', 'Authorization': 'Basic %s' % authString})
                 pass
-            except (SSLError, HTTPException):
+            except (SSLError, HTTPException, socket.error):
                 return False
 
         response = http_handler.getresponse()

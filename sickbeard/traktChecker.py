@@ -486,7 +486,7 @@ class TraktChecker():
         epObj = show.getEpisode(int(s), int(e))
         if epObj:
 
-            ep_segment = {}
+            segments = {}
 
             with epObj.lock:
                 if epObj.status not in (SKIPPED, DOWNLOADABLE):
@@ -496,25 +496,29 @@ class TraktChecker():
                 # figure out what segment the episode is in and remember it so we can backlog it
 
                 if epObj.season in ep_segment:
-                    ep_segment[epObj.season].append(epObj)
+                    segments[epObj.season].append(epObj)
                 else:
-                    ep_segment[epObj.season] = [epObj]
+                    segments[epObj.season] = [epObj]
 
                 epObj.status = WANTED
                 epObj.saveToDB()
 
-                backlog = (show, ep_segment)
-                if self.todoBacklog.count(backlog) == 0:
-                    self.todoBacklog.append(backlog)
+            for season, segment in segments.items():
+                cur_backlog_queue_item = search_queue.BacklogQueueItem(show, segment[1])
+                sickbeard.searchQueueScheduler.action.add_item(cur_backlog_queue_item)
 
+                logger.log(u"Starting backlog for " + show.name + " season " + str(
+                    season) + " because some eps were set to wanted")
 
     def manageNewShow(self, show):
         episodes = [i for i in self.todoWanted if i[0] == show.indexerid]
         for episode in episodes:
             self.todoWanted.remove(episode)
+
             if episode[1] == -1 and sickbeard.TRAKT_START_PAUSED:
                 show.paused = 1
                 continue
+
             self.setEpisodeToWanted(show, episode[1], episode[2])
             if not self.episode_in_watchlist(show, episode[1], episode[2]):
                 if not self.update_watchlist("episode", "add", show,  episode[1], episode[2]):

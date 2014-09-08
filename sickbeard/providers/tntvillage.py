@@ -459,15 +459,15 @@ class TNTVillageProvider(generic.TorrentProvider):
             return []
 
         for sqlshow in sqlResults:
-            self.show = helpers.findCertainShow(sickbeard.showList, int(sqlshow["showid"]))
-            if self.show:
-                curEp = self.show.getEpisode(int(sqlshow["season"]), int(sqlshow["episode"]))
+            self.show = curshow = helpers.findCertainShow(sickbeard.showList, int(sqlshow["showid"]))
+            if not self.show: continue
+            curEp = curshow.getEpisode(int(sqlshow["season"]), int(sqlshow["episode"]))
 
-                searchString = self._get_episode_search_strings(curEp, add_string='PROPER|REPACK')
+            searchString = self._get_episode_search_strings(curEp, add_string='PROPER|REPACK')
 
-                for item in self._doSearch(searchString[0]):
-                    title, url = self._get_title_and_url(item)
-                    results.append(classes.Proper(title, url, datetime.datetime.today(), self.show))
+            for item in self._doSearch(searchString[0]):
+                title, url = self._get_title_and_url(item)
+                results.append(classes.Proper(title, url, datetime.datetime.today(), self.show))
 
         return results
 
@@ -483,7 +483,7 @@ class TNTVillageCache(tvcache.TVCache):
         # only poll TNTVillage every 30 minutes max
         self.minTime = 30
 
-    def _getDailyData(self):
+    def _getRSSData(self):
         search_params = {'RSS': []}
         return self.provider._doSearch(search_params)
 

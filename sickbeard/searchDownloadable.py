@@ -97,9 +97,11 @@ class DownloadableSearcher:
 
             segments = self._get_segments(curShow, fromDate)
 
-            if len(segments):
-                download_search_queue_item = search_queue.DownloadSearchQueueItem(curShow, segments)
-                sickbeard.searchQueueScheduler.action.add_item(download_search_queue_item)  #@UndefinedVariable 
+            for season, segment in segments.items():
+                self.currentSearchInfo = {'title': curShow.name + " Season " + str(season)}
+
+                download_search_queue_item = search_queue.DownloadSearchQueueItem(curShow, segment)
+                sickbeard.searchQueueScheduler.action.add_item(download_search_queue_item)  # @UndefinedVariable
             else:
                 logger.log(u"Nothing is available for " + str(curShow.name) + ", skipping this season",
                            logger.DEBUG)

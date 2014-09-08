@@ -16,6 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with Sick Beard.  If not, see <http://www.gnu.org/licenses/>.
 
+import socket
 from httplib import HTTPSConnection, HTTPException
 from urllib import urlencode
 
@@ -91,7 +92,7 @@ class ProwlNotifier:
                                  "/publicapi/add",
                                  headers={'Content-type': "application/x-www-form-urlencoded"},
                                  body=urlencode(data))
-        except (SSLError, HTTPException):
+        except (SSLError, HTTPException, socket.error):
             logger.log(u"Prowl notification failed.", logger.ERROR)
             return False
         response = http_handler.getresponse()
