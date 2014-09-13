@@ -175,12 +175,22 @@ class DailySearchQueueItem(generic_queue.QueueItem):
                 for result in foundResults:
                     # just use the first result for now
                     if not result.episodes[0].show.paused:
-                        if result.episodes[0].show.lookIfDownloadable(result.episodes[0].season, result.episodes[0].episode,  result.episodes[0].quality, False):
-                            logger.log(u"Mark Downloadable " + result.name + " from " + result.provider.name)
-                            search.downloadableEpisode(result)
-                        elif result.episodes[0].show.wantEpisode(result.episodes[0].season, result.episodes[0].episode,  result.episodes[0].quality, False):
+                        myDB = db.DBConnection()
+                        sql_selection="SELECT show_name, indexer_id, season, episode, paused FROM (SELECT * FROM tv_shows s,tv_episodes e WHERE s.indexer_id = e.showid) T1 WHERE T1.paused = 0 and T1.episode_id IN (SELECT T2.episode_id FROM tv_episodes T2 WHERE T2.showid = T1.indexer_id and T2.status in (?,?,?,?) and T2.season!=0 ORDER BY T2.season,T2.episode LIMIT 1) ORDER BY T1.show_name,season,episode"
+                        results = myDB.select(sql_selection, [common.SNATCHED, common.WANTED, common.SKIPPED, common.DOWNLOADABLE])
+                        show_sk = [show for show in results if show["indexer_id"] == result.episodes[0].show.indexerid]
+                        if not show_sk or not sickbeard.USE_TRAKT:
                             logger.log(u"Downloading " + result.name + " from " + result.provider.name)
                             search.snatchEpisode(result)
+                        else:
+                            sn_sk = show_sk[0]["season"]
+                            ep_sk = show_sk[0]["episode"]
+                            if (int(sn_sk)*100+int(ep_sk)) < (int(result.episodes[0].season)*100+int(result.episodes[0].episode)) or not show_sk:
+                                logger.log(u"Mark Downloadable " + result.name + " from " + result.provider.name)
+                                search.downloadableEpisode(result)
+                            else:
+                                logger.log(u"Downloading " + result.name + " from " + result.provider.name)
+                                search.snatchEpisode(result)
                     else:
                         logger.log(u"Mark Downloadable " + result.name + " from " + result.provider.name)
                         search.downloadableEpisode(result)
