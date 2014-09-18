@@ -47,7 +47,7 @@ class DownloadableSearcher:
 
         self._last_DownloadableSearch = self._get_last_DownloadableSearch()
 
-        self.cycleTime = sickbeard.DOWNLOADABLE_SEARCH_FREQUENCY/60/24
+        self.cycleTime = sickbeard.DOWNLOADABLE_SEARCH_FREQUENCY / 60 / 24
         self.lock = threading.Lock()
         self.amActive = False
         self.amPaused = False
@@ -86,8 +86,8 @@ class DownloadableSearcher:
         fromDate = datetime.date.fromordinal(1)
 
         if not which_shows and not curDate - self._last_DownloadableSearch >= self.cycleTime:
-            logger.log(u"Running limited Downloadable search on recently missed episodes only")
-            fromDate = datetime.date.today() - datetime.timedelta(days=7)
+            logger.log(u"Running limited Downloadable search on missed episodes " + str(sickbeard.BACKLOG_DAYS) + " day(s) and older only")
+            fromDate = datetime.date.today() - datetime.timedelta(days=sickbeard.DOWNLOADABLE_SEARCH_DAYS)
 
         self.amActive = True
         self.amPaused = False
@@ -103,7 +103,7 @@ class DownloadableSearcher:
                 download_search_queue_item = search_queue.DownloadSearchQueueItem(curShow, segment)
                 sickbeard.searchQueueScheduler.action.add_item(download_search_queue_item)  # @UndefinedVariable
             else:
-                logger.log(u"Nothing is available for " + str(curShow.name) + ", skipping this season",
+                logger.log(u"Nothing is available for " + str(curShow.name) + ", skipping",
                            logger.DEBUG)
 
         # don't consider this an actual downloadable search if we only did recent eps
@@ -134,7 +134,7 @@ class DownloadableSearcher:
         return self._last_DownloadableSearch
 
     def _get_segments(self, show, fromDate):
-        anyQualities, bestQualities = common.Quality.splitQuality(show.quality)  #@UnusedVariable
+        anyQualities, bestQualities = common.Quality.splitQuality(show.quality)  # @UnusedVariable
 
         logger.log(u"Seeing if we need anything from " + show.name)
 

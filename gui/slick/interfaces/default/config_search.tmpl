@@ -68,12 +68,34 @@
 
                         <div class="field-pair">
                             <label class="nocheck clearfix">
+                                <span class="component-title">Backlog Search Day(s)</span>
+                                <input type="text" name="backlog_days" value="$sickbeard.BACKLOG_DAYS" size="5" />
+                            </label>
+                            <label class="nocheck clearfix">
+                                <span class="component-title">&nbsp;</span>
+                                <span class="component-desc">Day(s) to search from (eg. 7)</span>
+                            </label>
+                        </div>
+
+                        <div class="field-pair">
+                            <label class="nocheck clearfix">
+                                <span class="component-title">Downloadable Search Day(s)</span>
+                                <input type="text" name="downloadable_search_days" value="$sickbeard.DOWNLOADABLE_SEARCH_DAYS" size="5" />
+                            </label>
+                            <label class="nocheck clearfix">
+                                <span class="component-title">&nbsp;</span>
+                                <span class="component-desc">Day(s) to search from (eg. 7)</span>
+                            </label>
+                        </div>
+
+                        <div class="field-pair">
+                            <label class="nocheck clearfix">
                                 <span class="component-title">Backlog Search Frequency</span>
                                 <input type="text" name="backlog_frequency" value="$sickbeard.BACKLOG_FREQUENCY" size="5" />
                             </label>
                             <label class="nocheck clearfix">
                                 <span class="component-title">&nbsp;</span>
-                                <span class="component-desc">Time in minutes between searches (eg. 60)</span>
+                                <span class="component-desc">Time in minutes between searches (min. $sickbeard.MIN_BACKLOG_FREQUENCY)</span>
                             </label>
                         </div>
 
@@ -84,7 +106,7 @@
                             </label>
                             <label class="nocheck clearfix">
                                 <span class="component-title">&nbsp;</span>
-                                <span class="component-desc">Time in minutes between downloadable searches (eg. 60)</span>
+                                <span class="component-desc">Time in minutes between downloadable searches (min. $sickbeard.MIN_DOWNLOADABLE_SEARCH_FREQUENCY)</span>
                             </label>
                         </div>
 
@@ -95,7 +117,7 @@
                             </label>
                             <label class="nocheck clearfix">
                                 <span class="component-title">&nbsp;</span>
-                                <span class="component-desc">Time in minutes between searches (eg. 60)</span>
+                                <span class="component-desc">Time in minutes between searches (min. $sickbeard.MIN_DAILYSEARCH_FREQUENCY)</span>
                             </label>
                         </div>
 

@@ -495,7 +495,7 @@ class TraktChecker():
                 logger.log(u"Setting episode s" + str(s) + "e" + str(e) + " of show " + show.name + " to wanted")
                 # figure out what segment the episode is in and remember it so we can backlog it
 
-                if epObj.season in ep_segment:
+                if epObj.season in segments:
                     segments[epObj.season].append(epObj)
                 else:
                     segments[epObj.season] = [epObj]
@@ -503,8 +503,8 @@ class TraktChecker():
                 epObj.status = WANTED
                 epObj.saveToDB()
 
-            for season, segment in segments.items():
-                cur_backlog_queue_item = search_queue.BacklogQueueItem(show, segment[1])
+            for season in segments:
+                cur_backlog_queue_item = search_queue.BacklogQueueItem(show, season)
                 sickbeard.searchQueueScheduler.action.add_item(cur_backlog_queue_item)
 
                 logger.log(u"Starting backlog for " + show.name + " season " + str(
