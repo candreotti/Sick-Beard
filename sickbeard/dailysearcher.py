@@ -45,8 +45,8 @@ class DailySearcher():
         curDate = datetime.date.today().toordinal()
 
         myDB = db.DBConnection()
-        sqlResults = myDB.select("SELECT * FROM tv_episodes WHERE status in (?) AND season > 0 AND airdate <= ?",
-                                 [common.UNAIRED, curDate])
+        sqlResults = myDB.select("SELECT * FROM tv_episodes WHERE status in (?,?) AND season > 0 AND airdate <= ?",
+                                 [common.UNAIRED, common.SKIPPED, curDate])
 
         sql_l = []
         show = None
@@ -63,30 +63,33 @@ class DailySearcher():
                 continue
 
             ep = show.getEpisode(int(sqlEp["season"]), int(sqlEp["episode"]))
-            with ep.lock:
-                if ep.show.paused:
-                    ep.status = common.SKIPPED
-                else:
-                    if ep.status == common.UNAIRED:
-                        myDB = db.DBConnection()
-                        sql_selection="SELECT show_name, indexer_id, season, episode, paused FROM (SELECT * FROM tv_shows s,tv_episodes e WHERE s.indexer_id = e.showid) T1 WHERE T1.paused = 0 and T1.episode_id IN (SELECT T2.episode_id FROM tv_episodes T2 WHERE T2.showid = T1.indexer_id and T2.status in (?,?) and T2.season!=0 ORDER BY T2.season,T2.episode LIMIT 1) ORDER BY T1.show_name,season,episode"
-                        results = myDB.select(sql_selection, [common.SKIPPED, common.DOWNLOADABLE])
-                        show_sk = [show for show in results if show["indexer_id"] == sqlEp["showid"]]
-                        if not show_sk or not sickbeard.USE_TRAKT:
-                            logger.log(u"New episode " + ep.prettyName() + " airs today, setting status to WANTED")
-                            ep.status = common.WANTED                         
-                        else:
-                            sn_sk = show_sk[0]["season"]
-                            ep_sk = show_sk[0]["episode"]
-                            if (int(sn_sk)*100+int(ep_sk)) < (int(sqlEp["season"])*100+int(sqlEp["episode"])) or not show_sk:
-                                logger.log(u"New episode " + ep.prettyName() + " airs today, setting status to SKIPPED, due to trakt integration")
-                                ep.status = common.SKIPPED
-                            else:
+            if ep.status == common.UNAIRED:
+                with ep.lock:
+                    if ep.show.paused:
+                        ep.status = common.SKIPPED
+                    else:
+                        if ep.status == common.UNAIRED:
+                            myDB = db.DBConnection()
+                            sql_selection="SELECT show_name, indexer_id, season, episode, paused FROM (SELECT * FROM tv_shows s,tv_episodes e WHERE s.indexer_id = e.showid) T1 WHERE T1.paused = 0 and T1.episode_id IN (SELECT T2.episode_id FROM tv_episodes T2 WHERE T2.showid = T1.indexer_id and T2.status in (?,?) and T2.season!=0 ORDER BY T2.season,T2.episode LIMIT 1) ORDER BY T1.show_name,season,episode"
+                            results = myDB.select(sql_selection, [common.SKIPPED, common.DOWNLOADABLE])
+                            show_sk = [show for show in results if show["indexer_id"] == sqlEp["showid"]]
+                            if not show_sk or not sickbeard.USE_TRAKT:
                                 logger.log(u"New episode " + ep.prettyName() + " airs today, setting status to WANTED")
-                                ep.status = common.WANTED
+                                ep.status = common.WANTED                         
+                            else:
+                                sn_sk = show_sk[0]["season"]
+                                ep_sk = show_sk[0]["episode"]
+                                if (int(sn_sk)*100+int(ep_sk)) < (int(sqlEp["season"])*100+int(sqlEp["episode"])) or not show_sk:
+                                    logger.log(u"New episode " + ep.prettyName() + " airs today, setting status to SKIPPED, due to trakt integration")
+                                    ep.status = common.SKIPPED
+                                else:
+                                    logger.log(u"New episode " + ep.prettyName() + " airs today, setting status to WANTED")
+                                    ep.status = common.WANTED
 
-                wantedEp[show].append(ep)
-                sql_l.append(ep.get_sql())
+                    sql_l.append(ep.get_sql())
+
+            wantedEp[show].append(ep)
+
         else:
             logger.log(u"No new released episodes found ...")
 
