@@ -286,7 +286,7 @@ class TraktChecker():
 
 	sql_selection=sql_selection + " ORDER BY T1.show_name,season,episode"
 
-        results = myDB.select(sql_selection,[p,SKIPPED,DOWNLOADABLE,FAILED])
+        results = myDB.select(sql_selection,[p,SKIPPED,DOWNLOADABLE])
 
         for cur_result in results:
 
