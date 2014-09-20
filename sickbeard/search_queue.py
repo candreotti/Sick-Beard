@@ -174,11 +174,16 @@ class DownloadSearchQueueItem(generic_queue.QueueItem):
         except Exception:
             logger.log(traceback.format_exc(), logger.DEBUG)
 
+        if self.success is None:
+            self.success = False
+
         self.finish()
 
 class DailySearchQueueItem(generic_queue.QueueItem):
     def __init__(self, show, segment):
         generic_queue.QueueItem.__init__(self, 'Daily Search', DAILY_SEARCH)
+
+        self.success = None
         self.show = show
         self.segment = segment
 
@@ -222,6 +227,9 @@ class DailySearchQueueItem(generic_queue.QueueItem):
         except Exception:
             logger.log(traceback.format_exc(), logger.DEBUG)
 
+        if self.success is None:
+            self.success = False
+
         self.finish()
 
 
@@ -230,6 +238,7 @@ class ManualSearchQueueItem(generic_queue.QueueItem):
         generic_queue.QueueItem.__init__(self, 'Manual Search', MANUAL_SEARCH)
         self.priority = generic_queue.QueuePriorities.HIGH
         self.name = 'MANUAL-' + str(show.indexerid)
+
         self.success = None
         self.show = show
         self.segment = segment
@@ -275,6 +284,7 @@ class BacklogQueueItem(generic_queue.QueueItem):
         generic_queue.QueueItem.__init__(self, 'Backlog', BACKLOG_SEARCH)
         self.priority = generic_queue.QueuePriorities.LOW
         self.name = 'BACKLOG-' + str(show.indexerid)
+
         self.success = None
         self.show = show
         self.segment = segment
@@ -299,6 +309,9 @@ class BacklogQueueItem(generic_queue.QueueItem):
         except Exception:
             logger.log(traceback.format_exc(), logger.DEBUG)
 
+        if self.success is None:
+            self.success = False
+
         self.finish()
 
 
@@ -307,9 +320,10 @@ class FailedQueueItem(generic_queue.QueueItem):
         generic_queue.QueueItem.__init__(self, 'Retry', FAILED_SEARCH)
         self.priority = generic_queue.QueuePriorities.HIGH
         self.name = 'RETRY-' + str(show.indexerid)
+
+        self.success = None
         self.show = show
         self.segment = segment
-        self.success = None
 
     def run(self):
         generic_queue.QueueItem.run(self)
