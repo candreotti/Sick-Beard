@@ -533,7 +533,7 @@ def searchProviders(show, episodes, type="wantEP", manualSearch=False):
             myDB = db.DBConnection()
             allEps = [int(x["episode"]) for x in
                       myDB.select("SELECT episode FROM tv_episodes WHERE showid = ? AND season = ?",
-                                  [show.indexerid, season])]
+                                  [show.indexerid, show.season])]
             logger.log(u"Episode list: " + str(allEps), logger.DEBUG)
 
             allWanted = True
@@ -541,13 +541,13 @@ def searchProviders(show, episodes, type="wantEP", manualSearch=False):
 
             if type == "wantEP":
                 for curEpNum in allEps:
-                    if not show.wantEpisode(season, curEpNum, seasonQual):
+                    if not show.wantEpisode(show.season, curEpNum, seasonQual):
                         allWanted = False
                     else:
                         anyWanted = True
             elif type == "skipEp":
                 for curEpNum in allEps:
-                    if not show.lookIfDownloadable(season, curEpNum, seasonQual):
+                    if not show.lookIfDownloadable(show.season, curEpNum, seasonQual):
                         allWanted = False
                     else:
                         anyWanted = True
@@ -558,7 +558,7 @@ def searchProviders(show, episodes, type="wantEP", manualSearch=False):
                     u"Every ep in this season is needed, downloading the whole " + bestSeasonResult.provider.providerType + " " + bestSeasonResult.name)
                 epObjs = []
                 for curEpNum in allEps:
-                    epObjs.append(show.getEpisode(season, curEpNum))
+                    epObjs.append(show.getEpisode(show.season, curEpNum))
                 bestSeasonResult.episodes = epObjs
 
                 return [bestSeasonResult]
@@ -598,7 +598,7 @@ def searchProviders(show, episodes, type="wantEP", manualSearch=False):
                         u"Adding multi-ep result for full-season torrent. Set the episodes you don't want to 'don't download' in your torrent client if desired!")
                     epObjs = []
                     for curEpNum in allEps:
-                        epObjs.append(show.getEpisode(season, curEpNum))
+                        epObjs.append(show.getEpisode(show.season, curEpNum))
                     bestSeasonResult.episodes = epObjs
 
                     epNum = MULTI_EP_RESULT
