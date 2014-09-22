@@ -1336,7 +1336,7 @@ class TVEpisode(object):
         self._file_size = 0
         self._release_name = ''
         self._is_proper = False
-        self._torrent_hash = ''
+        self._torrent_hash = ""
         self._version = 0
         self._release_group = ''
 
@@ -1360,6 +1360,8 @@ class TVEpisode(object):
         self.relatedEps = []
 
         self.checkForMetaFiles()
+
+        self.wantedQuality = []
 
     name = property(lambda self: self._name, dirty_setter("_name"))
     season = property(lambda self: self._season, dirty_setter("_season"))

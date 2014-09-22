@@ -32,6 +32,7 @@ from sickbeard.exceptions import AuthException
 from name_parser.parser import NameParser, InvalidNameException, InvalidShowException
 from sickbeard.rssfeeds import RSSFeeds
 from sickbeard import clients
+import itertools
 
 class CacheDBConnection(db.DBConnection):
     def __init__(self, providerName):
@@ -279,7 +280,10 @@ class TVCache():
 
     def searchCache(self, episode, manualSearch=False):
         neededEps = self.findNeededEpisodes(episode, manualSearch)
-        return neededEps[episode]
+        if len(neededEps) > 0:
+            return neededEps[episode]
+        else:
+            return []
 
     def listPropers(self, date=None, delimiter="."):
         myDB = self._getDB()
@@ -291,19 +295,24 @@ class TVCache():
         return filter(lambda x: x['indexerid'] != 0, myDB.select(sql))
 
 
-    def findNeededEpisodes(self, episode=None, manualSearch=False):
+    def findNeededEpisodes(self, episode, manualSearch=False):
         neededEps = {}
-
-        if episode:
-            neededEps[episode] = []
+        cl = []
 
         myDB = self._getDB()
-        if not episode:
-            sqlResults = myDB.select("SELECT * FROM [" + self.providerID + "]")
-        else:
+        if type(episode) != list:
             sqlResults = myDB.select(
                 "SELECT * FROM [" + self.providerID + "] WHERE indexerid = ? AND season = ? AND episodes LIKE ?",
                 [episode.show.indexerid, episode.season, "%|" + str(episode.episode) + "|%"])
+        else:
+            for epObj in episode:
+                cl.append([
+                    "SELECT * FROM [" + self.providerID + "] WHERE indexerid = ? AND season = ? AND episodes LIKE ? "
+                    "AND quality IN (" + ",".join([str(x) for x in epObj.wantedQuality]) + ")",
+                    [epObj.show.indexerid, epObj.season, "%|" + str(epObj.episode) + "|%"]])
+
+            sqlResults = myDB.mass_action(cl, fetchall=True)
+            sqlResults = list(itertools.chain(*sqlResults))
 
         # for each cache entry
         for curResult in sqlResults:
@@ -327,50 +336,53 @@ class TVCache():
             if curSeason == -1:
                 continue
 
-            if episode and sickbeard.TORRENT_METHOD == 'transmission':
-                curEp = episode.episode
+            if sickbeard.TORRENT_METHOD == 'transmission':
+                listCurEp = curResult["episodes"].split("|")
             else:
-                curEp = curResult["episodes"].split("|")[1]
+                listCurEp = curResult["episodes"].split("|")[1]
 
-            if not curEp:
-                continue
-            curEp = int(curEp)
-
-            curQuality = int(curResult["quality"])
-            curReleaseGroup = curResult["release_group"]
-            curVersion = curResult["version"]
-
-            # if the show says we want that episode then add it to the list
-            if not showObj.wantEpisode(curSeason, curEp, curQuality, manualSearch) and not showObj.lookIfDownloadable(curSeason, curEp, curQuality, manualSearch):
-                logger.log(u"Skipping " + curResult["name"] + " because we don't want an episode that's " +
-                           Quality.qualityStrings[curQuality], logger.DEBUG)
+            if not listCurEp:
                 continue
 
-            if episode:
-                epObj = episode
-            else:
+            for curEp in listCurEp:
+
+                if not curEp:
+                    continue
+
+                curEp = int(curEp)
+
+                curQuality = int(curResult["quality"])
+                curReleaseGroup = curResult["release_group"]
+                curVersion = curResult["version"]
+
+                # if the show says we want that episode then add it to the list
+                if not showObj.wantEpisode(curSeason, curEp, curQuality, manualSearch) and not showObj.lookIfDownloadable(curSeason, curEp, curQuality, manualSearch):
+                    logger.log(u"Skipping " + curResult["name"] + " because we don't want an episode that's " +
+                               Quality.qualityStrings[curQuality], logger.DEBUG)
+                    continue
+
                 epObj = showObj.getEpisode(curSeason, curEp)
+    
+                # build a result object
+                title = curResult["name"]
+                url = curResult["url"]
 
-            # build a result object
-            title = curResult["name"]
-            url = curResult["url"]
+                logger.log(u"Found result " + title + " at " + url)
 
-            logger.log(u"Found result " + title + " at " + url)
+                result = self.provider.getResult([epObj])
+                result.show = showObj
+                result.url = url
+                result.name = title
+                result.quality = curQuality
+                result.release_group = curReleaseGroup
+                result.version = curVersion
+                result.content = None
 
-            result = self.provider.getResult([epObj])
-            result.show = showObj
-            result.url = url
-            result.name = title
-            result.quality = curQuality
-            result.release_group = curReleaseGroup
-            result.version = curVersion
-            result.content = None
-
-            # add it to the list
-            if epObj not in neededEps:
-                neededEps[epObj] = [result]
-            else:
-                neededEps[epObj].append(result)
+                # add it to the list
+                if epObj not in neededEps:
+                    neededEps[epObj] = [result]
+                else:
+                    neededEps[epObj].append(result)
 
         # datetime stamp this search so cache gets cleared
         self.setLastSearch()

@@ -50,14 +50,12 @@ class DailySearcher():
 
         sql_l = []
         show = None
-        wantedEp = {}
 
         for sqlEp in sqlResults:
             try:
                 if not show or int(sqlEp["showid"]) != show.indexerid:
                     show = helpers.findCertainShow(sickbeard.showList, int(sqlEp["showid"]))
-                    wantedEp[show] = []
-
+                    if not show: continue 
             except exceptions.MultipleShowObjectsException:
                 logger.log(u"ERROR: expected to find a single show matching " + sqlEp["showid"])
                 continue
@@ -86,10 +84,7 @@ class DailySearcher():
                                     logger.log(u"New episode " + ep.prettyName() + " airs today, setting status to WANTED")
                                     ep.status = common.WANTED
 
-                    sql_l.append(ep.get_sql())
-
-            wantedEp[show].append(ep)
-
+                sql_l.append(ep.get_sql())
         else:
             logger.log(u"No new released episodes found ...")
 
@@ -97,9 +92,8 @@ class DailySearcher():
             myDB = db.DBConnection()
             myDB.mass_action(sql_l)
 
-        for show, episode in wantedEp.items():
-            # queue episode for daily search
-            dailysearch_queue_item = sickbeard.search_queue.DailySearchQueueItem(show, episode)
-            sickbeard.searchQueueScheduler.action.add_item(dailysearch_queue_item)
+        # queue episode for daily search
+        dailysearch_queue_item = sickbeard.search_queue.DailySearchQueueItem()
+        sickbeard.searchQueueScheduler.action.add_item(dailysearch_queue_item)
 
         self.amActive = False
