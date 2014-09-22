@@ -166,7 +166,7 @@ def snatchEpisode(result, endStatus=SNATCHED):
 
 	        if result.resultType == "torrent":
 	    	    curEpObj.torrent_hash = client._get_torrent_hash(result)
-                    logger.log(u"hash" + str(curEpObj.torrent_hashstr), logger.ERROR)
+                    logger.log(u"hash" + str(curEpObj.torrent_hash), logger.ERROR)
             sql_l.append(curEpObj.get_sql())
 
         if curEpObj.status not in Quality.DOWNLOADED:

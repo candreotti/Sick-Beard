@@ -410,6 +410,11 @@ class TraktChecker():
             return 
 
         for show in self.EpisodeWatchlist:
+            indexer = int(sickbeard.TRAKT_DEFAULT_INDEXER)
+            if indexer == INDEXER_TVRAGE:
+                indexer_id = int(show["tvrage_id"])
+            else:
+                indexer_id = int(show["tvdb_id"])
 
             #self.addDefaultShow(indexer, indexer_id, show["title"], SKIPPED)
             newShow = helpers.findCertainShowFromIMDB(sickbeard.showList, show["imdb_id"])
@@ -423,9 +428,9 @@ class TraktChecker():
                             if not self.episode_in_watchlist(newShow, episode["season"], episode["number"]):
                                 if not self.update_watchlist("episode", "add", newShow, episode["season"], episode["number"]):
                                     return False
+                            self.startBacklog(newShow)
                     else:
-                        self.todoWanted.append((newShow.indexerid, episode["season"], episode["number"]))
-                self.startBacklog(newShow)
+                        self.todoWanted.append((indexer_id, episode["season"], episode["number"]))
             except TypeError:
                 logger.log(u"Could not parse the output from trakt for " + show["title"], logger.DEBUG)
                 return False
