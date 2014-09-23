@@ -130,16 +130,16 @@ def snatchEpisode(result, endStatus=SNATCHED):
         if sickbeard.TORRENT_METHOD == "blackhole":
             dlResult = _downloadResult(result)
         else:
+            client = clients.getClientIstance(sickbeard.TORRENT_METHOD)()
             # make sure we have the torrent file content
             if not result.content:
                 if not result.url.startswith('magnet'):
-                    result.content = result.provider.getURL(result.url)
+                    result = client._get_torrent_hash(result)
                     if not result.content:
                         logger.log(
                             u"Torrent content failed to download from " + result.url, logger.ERROR
                         )
             # Snatches torrent with client
-            client = clients.getClientIstance(sickbeard.TORRENT_METHOD)()
             dlResult = client.sendTORRENT(result)
     else:
         logger.log(u"Unknown result type, unable to download it", logger.ERROR)
@@ -165,8 +165,7 @@ def snatchEpisode(result, endStatus=SNATCHED):
                 curEpObj.status = Quality.compositeStatus(endStatus, result.quality)
 
 	        if result.resultType == "torrent":
-	    	    curEpObj.torrent_hash = client._get_torrent_hash(result)
-                    logger.log(u"hash" + str(curEpObj.torrent_hash), logger.ERROR)
+	    	    curEpObj.torrent_hash = result.hash
             sql_l.append(curEpObj.get_sql())
 
         if curEpObj.status not in Quality.DOWNLOADED:
