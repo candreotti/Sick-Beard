@@ -395,6 +395,7 @@ def searchForNeededEpisodes():
     didSearch = False
 
     origThreadName = threading.currentThread().name
+    threads = []
 
     show_list = sickbeard.showList
     fromDate = datetime.date.fromordinal(1)
@@ -409,20 +410,20 @@ def searchForNeededEpisodes():
     providers = [x for x in sickbeard.providers.sortedProviderList() if x.isActive() and x.enable_daily]
     for curProvider in providers:
 
+        # spawn separate threads for each provider so we don't need to wait for providers with slow network operation
+        threads.append(threading.Thread(target=curProvider.cache.updateCache, name=origThreadName +
+                                                                                   " :: [" + curProvider.name + "]"))
+        # start the thread we just created
+        threads[-1].start()
+
+    # wait for all threads to finish
+    for t in threads:
+        t.join()
+
+    for curProvider in providers:
         threading.currentThread().name = origThreadName + " :: [" + curProvider.name + "]"
 
-        try:
-            curProvider.cache.updateCache()
-            curFoundResults = curProvider.searchRSS(episodes)
-        except exceptions.AuthException, e:
-            logger.log(u"Authentication error: " + ex(e), logger.ERROR)
-            continue
-        except Exception, e:
-            logger.log(u"Error while searching " + curProvider.name + ", skipping: " + ex(e), logger.ERROR)
-            logger.log(traceback.format_exc(), logger.DEBUG)
-            continue
-        finally:
-            threading.currentThread().name = origThreadName
+        curFoundResults = curProvider.searchRSS(episodes)
 
         didSearch = True
 
@@ -461,6 +462,8 @@ def searchForNeededEpisodes():
                         continue
             
             foundResults[curEp] = bestResult
+
+    threading.currentThread().name = origThreadName
 
     if not didSearch:
         logger.log(
