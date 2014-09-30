@@ -95,6 +95,7 @@ class SearchQueue(generic_queue.GenericQueue):
         return self.min_priority >= generic_queue.QueuePriorities.NORMAL
 
     def is_manualsearch_in_progress(self):
+        # Only referenced in webserve.py, only current running manualsearch or failedsearch is needed!!
         if isinstance(self.currentItem, (ManualSearchQueueItem, FailedQueueItem)):
             return True
         return False
@@ -183,9 +184,8 @@ class DownloadSearchQueueItem(generic_queue.QueueItem):
 
 class DailySearchQueueItem(generic_queue.QueueItem):
     def __init__(self):
-        generic_queue.QueueItem.__init__(self, 'Daily Search', DAILY_SEARCH)
-
         self.success = None
+        generic_queue.QueueItem.__init__(self, 'Daily Search', DAILY_SEARCH)
 
     def run(self):
         generic_queue.QueueItem.run(self)
@@ -206,7 +206,7 @@ class DailySearchQueueItem(generic_queue.QueueItem):
                         show_sk = [show for show in results if show["indexer_id"] == result.episodes[0].show.indexerid]
                         if not show_sk or not sickbeard.USE_TRAKT:
                             logger.log(u"Downloading " + result.name + " from " + result.provider.name)
-                            search.snatchEpisode(result)
+                            self.success = search.snatchEpisode(result)
                         else:
                             sn_sk = show_sk[0]["season"]
                             ep_sk = show_sk[0]["episode"]
@@ -238,7 +238,6 @@ class ManualSearchQueueItem(generic_queue.QueueItem):
         generic_queue.QueueItem.__init__(self, 'Manual Search', MANUAL_SEARCH)
         self.priority = generic_queue.QueuePriorities.HIGH
         self.name = 'MANUAL-' + str(show.indexerid)
-
         self.success = None
         self.show = show
         self.segment = segment
@@ -284,7 +283,6 @@ class BacklogQueueItem(generic_queue.QueueItem):
         generic_queue.QueueItem.__init__(self, 'Backlog', BACKLOG_SEARCH)
         self.priority = generic_queue.QueuePriorities.LOW
         self.name = 'BACKLOG-' + str(show.indexerid)
-
         self.success = None
         self.show = show
         self.segment = segment
@@ -336,7 +334,6 @@ class FailedQueueItem(generic_queue.QueueItem):
                 
                 failed_history.markFailed(epObj)
     
-
                 (release, provider) = failed_history.findRelease(epObj)
                 if release:
                     failed_history.logFailed(release)
