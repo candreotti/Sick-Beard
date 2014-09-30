@@ -91,6 +91,13 @@ class GenericClient(object):
         """
         return False
 
+    def _get_file_list_in_torrent (self, result):
+        """
+        This should be overridden should return the True/False from the client
+        when a torrent is added via url (magnet or .torrent link)
+        """
+        return []
+
     def _add_torrent_file(self, result):
         """
         This should be overridden should return the True/False from the client
@@ -152,6 +159,13 @@ class GenericClient(object):
             result.hash = sha1(bencode(info)).hexdigest()
 
         return result
+
+    def _torrent_is_downloading(self, result):
+        """
+        This should be overridden should return the True/False from the client 
+        when a torrent is set with pause
+        """
+        return False
 
     def remove_torrent_downloaded(self,hash):
         """

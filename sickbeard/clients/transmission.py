@@ -23,6 +23,8 @@ from base64 import b64encode
 import sickbeard
 from sickbeard import logger
 from sickbeard.clients.generic import GenericClient
+from sickbeard.name_parser.parser import NameParser, InvalidNameException, InvalidShowException
+from sickbeard import helpers
 
 
 class TransmissionAPI(GenericClient):
@@ -54,29 +56,144 @@ class TransmissionAPI(GenericClient):
 
     def _add_torrent_uri(self, result):
 
-        arguments = {'filename': result.url,
-                     'paused': 1 if sickbeard.TORRENT_PAUSED else 0,
-                     'download-dir': sickbeard.TORRENT_PATH
+        if not self._torrent_is_downloading(result):
+
+            arguments = {'filename': result.url,
+                         'paused': 1 if sickbeard.TORRENT_PAUSED else 0,
+                         'download-dir': sickbeard.TORRENT_PATH
+#                         'files-unwanted': []
+            }
+            post_data = json.dumps({'arguments': arguments,
+                                'method': 'torrent-add',
+            })
+            self._request(method='post', data=post_data)
+
+            if not self.response.json()['result'] == "success":
+                return False
+
+    
+        file_list = self._get_file_list_in_torrent(result)
+        
+        if not file_list:
+            return False
+
+        wantedFile = []
+
+        for epObj in result.episodes:
+            for name_file in file_list:
+                try:
+                    myParser = NameParser(showObj=result.show, convert=True)
+                    parse_result = myParser.parse(name_file)
+                except InvalidNameException:
+                    logger.log(u"Unable to parse the filename " + name + " into a valid episode", logger.DEBUG)
+                    return False
+                except InvalidShowException:
+                    logger.log(u"Unable to parse the filename " + name + " into a valid show", logger.DEBUG)
+                    return False
+
+                if not parse_result or not parse_result.series_name:
+                    continue
+
+		if epObj.episode in parse_result.episodes and epObj.season == parse_result.season:
+                    wantedFile.extend(name_file)
+
+        if wantedFile:
+            arguments = {'ids': [result.hash],
+                         'files-wanted': wantedfile
+            }
+            post_data = json.dumps({'arguments': arguments,
+                        'method': 'torrent-set',
+            })
+            self._request(method='post', data=post_data)
+
+            return self.response.json()['result'] == "success"
+        else:
+            self.remove_torrent_downloaded(result.hash) 
+            return False
+
+    def _get_file_list_in_torrent (self, result):
+
+        arguments = {'ids': [result.hash],
+                     'fields': ["files"]
         }
         post_data = json.dumps({'arguments': arguments,
-                                'method': 'torrent-add',
+                            'method': 'torrent-get',
         })
         self._request(method='post', data=post_data)
 
-        return self.response.json()['result'] == "success"
+        if self.response.json()['result'] == "success":
+            return self.response.json()
+        else:
+            return []
 
     def _add_torrent_file(self, result):
 
-        arguments = {'metainfo': b64encode(result.content),
-                     'paused': 1 if sickbeard.TORRENT_PAUSED else 0,
-                     'download-dir': sickbeard.TORRENT_PATH
-        }
-        post_data = json.dumps({'arguments': arguments,
-                                'method': 'torrent-add',
-        })
-        self._request(method='post', data=post_data)
+        if not self._torrent_is_downloading(result):
 
-        return self.response.json()['result'] == "success"
+            arguments = {'metainfo': b64encode(result.content),
+                         'paused': 1 if sickbeard.TORRENT_PAUSED else 0,
+                         'download-dir': sickbeard.TORRENT_PATH
+            }
+            post_data = json.dumps({'arguments': arguments,
+                                    'method': 'torrent-add',
+            })
+            self._request(method='post', data=post_data)
+
+            if not self.response.json()['result'] == "success":
+                return False
+
+            arguments = {'ids': [result.hash],
+                         'files-unwanted': []
+            }
+            post_data = json.dumps({'arguments': arguments,
+                                    'method': 'torrent-set',
+            })
+            self._request(method='post', data=post_data)
+    
+            if not self.response.json()['result'] == "success":
+                return False
+
+        file_list = self._get_file_list_in_torrent(result)
+
+        if not file_list:
+            return False
+
+        wantedFile = []
+
+        for epObj in result.episodes:
+            index = 0
+            for name_file in file_list['arguments']['torrents'][0]['files']:
+                try:
+                    name_file["name"] = name_file["name"].split('/')[1]
+                    myParser = NameParser(showObj=result.show, convert=True)
+                    parse_result = myParser.parse(name_file["name"])
+                except InvalidNameException:
+                    logger.log(u"Unable to parse the filename " + str(name_file["name"]) + " into a valid episode", logger.DEBUG)
+                    return False
+                except InvalidShowException:
+                    logger.log(u"Unable to parse the filename " + str(name_file["name"]) + " into a valid show", logger.DEBUG)
+                    return False
+
+                if not parse_result or not parse_result.series_name:
+                    continue
+
+		if epObj.episode in parse_result.episode_numbers and epObj.season == parse_result.season_number:
+                    wantedFile.append(index)
+                index += 1
+
+        if wantedFile:
+            arguments = {'ids': [result.hash],
+                         'files-wanted': wantedFile
+            }
+            post_data = json.dumps({'arguments': arguments,
+                        'method': 'torrent-set',
+            })
+            self._request(method='post', data=post_data)
+
+            return self.response.json()['result'] == "success"
+        else:
+            self.remove_torrent_downloaded(result.hash) 
+            return False
 
     def _set_torrent_ratio(self, result):
 
@@ -144,6 +261,23 @@ class TransmissionAPI(GenericClient):
         self._request(method='post', data=post_data)            
         
         return self.response.json()['result'] == "success"    
+
+    def _torrent_is_downloading(self, result):
+
+        arguments = { 'ids': [result.hash],
+                      'fields': [ "id", "name", "hashString"]
+                      }
+        post_data = json.dumps({ 'arguments': arguments,
+                                 'method': 'torrent-get',
+                                 })
+        self._request(method='post', data=post_data)
+
+        if self.response.json()['result'] == "success" and self.response.json()['arguments']['torrents']:
+            logger.log(u"torrent found, result" + str(self.response.json()), logger.DEBUG)
+            return True
+        else:
+            logger.log(u"torrent not found, result" + str(self.response.json()), logger.DEBUG)
+            return False
 	
     def remove_torrent_downloaded(self,hash):
 
