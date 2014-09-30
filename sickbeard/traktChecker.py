@@ -18,6 +18,7 @@
 
 import os
 import traceback
+import datetime
 
 import sickbeard
 from sickbeard import encodingKludge as ek
@@ -420,17 +421,18 @@ class TraktChecker():
             newShow = helpers.findCertainShowFromIMDB(sickbeard.showList, show["imdb_id"])
 
             try:
-                for episode in show["episodes"]:
-                    if newShow is not None:
-                        epObj = newShow.getEpisode(int(episode["season"]), int(episode["number"]))
-                        if epObj.status != WANTED:
-                            self.setEpisodeToWanted(newShow, episode["season"], episode["number"])
-                            if not self.episode_in_watchlist(newShow, episode["season"], episode["number"]):
-                                if not self.update_watchlist("episode", "add", newShow, episode["season"], episode["number"]):
-                                    return False
-                            self.startBacklog(newShow)
-                    else:
-                        self.todoWanted.append((indexer_id, episode["season"], episode["number"]))
+                if newShow and newShow.indexer == indexer:
+                    for episode in show["episodes"]:
+                        if newShow is not None:
+                            epObj = newShow.getEpisode(int(episode["season"]), int(episode["number"]))
+                            if epObj.status != WANTED:
+                                self.setEpisodeToWanted(newShow, episode["season"], episode["number"])
+                                if not self.episode_in_watchlist(newShow, episode["season"], episode["number"]):
+                                    if not self.update_watchlist("episode", "add", newShow, episode["season"], episode["number"]):
+                                        return False
+                                self.startBacklog(newShow)
+                        else:
+                            self.todoWanted.append((indexer_id, episode["season"], episode["number"]))
             except TypeError:
                 logger.log(u"Could not parse the output from trakt for " + show["title"], logger.DEBUG)
                 return False
@@ -463,7 +465,8 @@ class TraktChecker():
 
                 sickbeard.showQueueScheduler.action.addShow(int(indexer), int(indexer_id), showPath, status,
                                                             int(sickbeard.QUALITY_DEFAULT),
-                                                            int(sickbeard.FLATTEN_FOLDERS_DEFAULT))
+                                                            int(sickbeard.FLATTEN_FOLDERS_DEFAULT),
+                                                            paused=sickbeard.TRAKT_START_PAUSED)
             else:
                 logger.log(u"There was an error creating the show, no root directory setting found", logger.ERROR)
                 return
@@ -491,39 +494,27 @@ class TraktChecker():
         epObj = show.getEpisode(int(s), int(e))
         if epObj:
 
-            segments = {}
-
             with epObj.lock:
-                if epObj.status not in (SKIPPED, DOWNLOADABLE):
+                if epObj.status not in (SKIPPED, DOWNLOADABLE) or epObj.airdate == datetime.date.fromordinal(1):
                     return
 
                 logger.log(u"Setting episode s" + str(s) + "e" + str(e) + " of show " + show.name + " to wanted")
                 # figure out what segment the episode is in and remember it so we can backlog it
 
-                if epObj.season in segments:
-                    segments[epObj.season].append(epObj)
-                else:
-                    segments[epObj.season] = [epObj]
-
                 epObj.status = WANTED
                 epObj.saveToDB()
 
-            for season in segments:
-                cur_backlog_queue_item = search_queue.BacklogQueueItem(show, season)
-                sickbeard.searchQueueScheduler.action.add_item(cur_backlog_queue_item)
+            cur_backlog_queue_item = search_queue.BacklogQueueItem(show, [epObj])
+            sickbeard.searchQueueScheduler.action.add_item(cur_backlog_queue_item)
 
-                logger.log(u"Starting backlog for " + show.name + " season " + str(
-                    season) + " because some eps were set to wanted")
+            logger.log(u"Starting backlog for " + show.name + " season " + str(
+                    s) + " episode " + str(e) + " because some eps were set to wanted")
 
     def manageNewShow(self, show):
+        logger.log(u"Checking if trakt watch list wants to search for episodes from new show " + show.name, logger.DEBUG)
         episodes = [i for i in self.todoWanted if i[0] == show.indexerid]
         for episode in episodes:
             self.todoWanted.remove(episode)
-
-            if episode[1] == -1 and sickbeard.TRAKT_START_PAUSED:
-                show.paused = 1
-                continue
-
             self.setEpisodeToWanted(show, episode[1], episode[2])
             if not self.episode_in_watchlist(show, episode[1], episode[2]):
                 if not self.update_watchlist("episode", "add", show,  episode[1], episode[2]):
