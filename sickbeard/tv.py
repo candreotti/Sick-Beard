@@ -19,6 +19,7 @@
 from __future__ import with_statement
 
 import os.path
+import shutil
 import datetime
 import threading
 import re
@@ -1003,7 +1004,7 @@ class TVShow(object):
                     except:
                         logger.log(u'Cannot change permissions of ' + self.location, logger.WARNING)
 
-                ek.ek(os.rmdir, self.location)
+                ek.ek(shutil.rmtree, self.location)
             except OSError, e:
                 logger.log(u"Unable to delete " + self.location + ": " + repr(e) + " / " + str(e), logger.WARNING)
 
