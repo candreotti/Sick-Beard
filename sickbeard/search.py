@@ -402,8 +402,8 @@ def searchForNeededEpisodes():
     episodes = []
 
     for curShow in show_list:
-        if curShow.paused:
-            continue
+#        if curShow.paused:
+#            continue
 
         episodes.extend(wantedEpisodes(curShow, fromDate))
 
