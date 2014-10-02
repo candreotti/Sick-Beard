@@ -1445,7 +1445,9 @@ class ConfigGeneral(MainHandler):
 
     def saveRootDirs(self, rootDirString=None):
         sickbeard.ROOT_DIRS = rootDirString
-
+        
+    def saveImdbWatchlists(self, imdbWatchlistString=None):
+        sickbeard.IMDB_WATCHLISTCSV = imdbWatchlistString
 
     def saveAddShowDefaults(self, defaultStatus, anyQualities, bestQualities, defaultFlattenFolders, subtitles=False,
                             anime=False, scene=False):
@@ -1505,7 +1507,7 @@ class ConfigGeneral(MainHandler):
                     handle_reverse_proxy=None, sort_article=None, auto_update=None, notify_on_update=None,
                     proxy_setting=None, anon_redirect=None, git_path=None, calendar_unprotected=None,
                     fuzzy_dating=None, trim_zero=None, date_preset=None, date_preset_na=None, time_preset=None,
-                    indexer_timeout=None, play_videos=None, rootDir=None):
+                    indexer_timeout=None, play_videos=None, rootDir=None, use_imdbwl=None, imdbWatchlistCsv=None):
 
         results = []
 
@@ -1515,6 +1517,7 @@ class ConfigGeneral(MainHandler):
         config.change_VERSION_NOTIFY(config.checkbox_to_value(version_notify))
         sickbeard.AUTO_UPDATE = config.checkbox_to_value(auto_update)
         sickbeard.NOTIFY_ON_UPDATE = config.checkbox_to_value(notify_on_update)
+        sickbeard.USE_IMDBWATCHLIST = config.checkbox_to_value(use_imdbwl)
         # sickbeard.LOG_DIR is set in config.change_LOG_DIR()
 
         sickbeard.UPDATE_SHOWS_ON_START = config.checkbox_to_value(update_shows_on_start)
@@ -1737,7 +1740,9 @@ class ConfigPostProcessing(MainHandler):
                            naming_anime=None,
                            naming_abd_pattern=None, naming_strip_year=None, use_failed_downloads=None,
                            delete_failed=None, extra_scripts=None, skip_removed_files=None,
-                           naming_custom_sports=None, naming_sports_pattern=None, autopostprocesser_frequency=None):
+                           naming_custom_sports=None, naming_sports_pattern=None,
+                           naming_custom_anime=None, naming_anime_pattern=None, naming_anime_multi_ep=None,
+                           autopostprocesser_frequency=None):
 
         results = []
 
@@ -1770,6 +1775,7 @@ class ConfigPostProcessing(MainHandler):
         sickbeard.POSTPONE_IF_SYNC_FILES = config.checkbox_to_value(postpone_if_sync_files)
         sickbeard.NAMING_CUSTOM_ABD = config.checkbox_to_value(naming_custom_abd)
         sickbeard.NAMING_CUSTOM_SPORTS = config.checkbox_to_value(naming_custom_sports)
+        sickbeard.NAMING_CUSTOM_ANIME = config.checkbox_to_value(naming_custom_anime)
         sickbeard.NAMING_STRIP_YEAR = config.checkbox_to_value(naming_strip_year)
         sickbeard.USE_FAILED_DOWNLOADS = config.checkbox_to_value(use_failed_downloads)
         sickbeard.DELETE_FAILED = config.checkbox_to_value(delete_failed)
@@ -1795,6 +1801,17 @@ class ConfigPostProcessing(MainHandler):
         if self.isNamingValid(naming_pattern, naming_multi_ep, anime_type=naming_anime) != "invalid":
             sickbeard.NAMING_PATTERN = naming_pattern
             sickbeard.NAMING_MULTI_EP = int(naming_multi_ep)
+            sickbeard.NAMING_ANIME = int(naming_anime)
+            sickbeard.NAMING_FORCE_FOLDERS = naming.check_force_season_folders()
+        else:
+            if int(naming_anime) in [1, 2]:
+                results.append("You tried saving an invalid anime naming config, not saving your naming settings")
+            else:
+                results.append("You tried saving an invalid naming config, not saving your naming settings")
+
+        if self.isNamingValid(naming_anime_pattern, naming_anime_multi_ep, anime_type=naming_anime) != "invalid":
+            sickbeard.NAMING_ANIME_PATTERN = naming_anime_pattern
+            sickbeard.NAMING_ANIME_MULTI_EP = int(naming_anime_multi_ep)
             sickbeard.NAMING_ANIME = int(naming_anime)
             sickbeard.NAMING_FORCE_FOLDERS = naming.check_force_season_folders()
         else:

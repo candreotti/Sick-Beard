@@ -45,7 +45,7 @@ class DailySearcher():
         curDate = datetime.date.today().toordinal()
 
         myDB = db.DBConnection()
-        sqlResults = myDB.select("SELECT * FROM tv_episodes WHERE status in (?) AND season > 0 AND airdate <= ?",
+        sqlResults = myDB.select("SELECT * FROM tv_episodes WHERE status = ? AND season > 0 AND airdate <= ?",
                                  [common.UNAIRED, curDate])
 
         sql_l = []
@@ -55,7 +55,11 @@ class DailySearcher():
             try:
                 if not show or int(sqlEp["showid"]) != show.indexerid:
                     show = helpers.findCertainShow(sickbeard.showList, int(sqlEp["showid"]))
-                    if not show: continue 
+
+                # for when there is orphaned series in the database but not loaded into our showlist
+                if not show:
+                    continue
+
             except exceptions.MultipleShowObjectsException:
                 logger.log(u"ERROR: expected to find a single show matching " + sqlEp["showid"])
                 continue
