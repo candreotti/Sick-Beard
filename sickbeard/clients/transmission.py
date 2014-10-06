@@ -109,6 +109,7 @@ class TransmissionAPI(GenericClient):
                     wantedFile.append(index)
                 index += 1
 
+        logger.log(u"wantedFile list: " + str(wantedFile), logger.DEBUG)
         if wantedFile:
             arguments = {'ids': [result.hash],
                          'files-wanted': wantedFile

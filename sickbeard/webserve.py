@@ -4375,7 +4375,7 @@ class Home(MainHandler):
             msg = "Retrying Search was automatically started for the following season of <b>" + showObj.name + "</b>:<br />"
 
             for season, segment in segments.items():
-                cur_failed_queue_item = search_queue.FailedQueueItem(showObj, [segment])
+                cur_failed_queue_item = search_queue.FailedQueueItem(showObj, segment)
                 sickbeard.searchQueueScheduler.action.add_item(cur_failed_queue_item)  # @UndefinedVariable
 
                 msg += "<li>Season " + str(season) + "</li>"
