@@ -109,6 +109,7 @@ class TransmissionAPI(GenericClient):
                     wantedFile.append(index)
                 index += 1
 
+        logger.log(u"wantedFile list: " + str(wantedFile), logger.DEBUG)
         if wantedFile:
             arguments = {'ids': [result.hash],
                          'files-wanted': wantedFile
@@ -176,7 +177,8 @@ class TransmissionAPI(GenericClient):
             index = 0
             for name_file in file_list['arguments']['torrents'][0]['files']:
                 try:
-                    name_file["name"] = name_file["name"].split('/')[1]
+                    if '/' in name_file["name"]:
+                        name_file["name"] = name_file["name"].split('/')[1]
                     myParser = NameParser(showObj=result.show, convert=True)
                     parse_result = myParser.parse(name_file["name"])
                 except InvalidNameException:
