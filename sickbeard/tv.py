@@ -26,6 +26,7 @@ import re
 import glob
 import stat
 import traceback
+import shutil
 
 import sickbeard
 
