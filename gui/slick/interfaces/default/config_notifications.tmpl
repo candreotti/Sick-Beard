@@ -9,6 +9,7 @@
 
 <script type="text/javascript" src="$sbRoot/js/configNotifications.js?$sbPID"></script>
 <script type="text/javascript" src="$sbRoot/js/config.js?$sbPID"></script>
+<div id="content960">
 #if $varExists('header') 
 	<h1 class="header">$header</h1>
 #else 
@@ -801,7 +802,7 @@
                                 </label>
                                 <label class="nocheck clearfix">
                                     <span class="component-title">&nbsp;</span>
-                                    <span class="component-desc"><a href="https://pushover.net/" rel="noreferrer" onclick="window.open('${sickbeard.ANON_REDIRECT}' + this.href, '_blank'); return false;">Click here</a> to create a Pushover API key</span>
+                                    <span class="component-desc"><a href="https://pushover.net/apps/clone/sickrage" rel="noreferrer" onclick="window.open('${sickbeard.ANON_REDIRECT}' + this.href, '_blank'); return false;">Click here</a> to create a Pushover API key</span>
                                 </label>
                             </div>
                             <div class="testNotification" id="testPushover-result">Click below to test.</div>
@@ -1268,7 +1269,7 @@
                                     <span class="component-desc">Get your key at: <a href="http://trakt.tv/settings/api" rel="noreferrer" onclick="window.open('${sickbeard.ANON_REDIRECT}' + this.href, '_blank'); return false;">http://trakt.tv/settings/api</a></span>
                                 </label>
                             </div>
-                            <div class="field-pair">
+							<div class="field-pair">
                                 <label class="nocheck clearfix" for="trakt_default_indexer">
                                     <span class="component-title">Default Indexer:</span>
                                     <span class="component-desc">
@@ -1279,21 +1280,12 @@
                                         </select>
                                     </span>
                                 </label>
-                            </div
-                        </div>
-
+							</div>
                             <div class="field-pair">
                                 <input type="checkbox" class="enabler" name="trakt_sync" id="trakt_sync" #if $sickbeard.TRAKT_SYNC then "checked=\"checked\"" else ""# />
                                 <label class="clearfix" for="trakt_sync">
                                     <span class="component-title">Sync Libraries:</span>
                                     <span class="component-desc">Syncs SickBeard's show library with your trakt.tv show library</span>
-                                </label>
-                            </div>
-                            <div class="field-pair">
-                                <input type="checkbox" class="enabler" name="trakt_use_recommended" id="trakt_use_recommended" #if $sickbeard.TRAKT_USE_RECOMMENDED then "checked=\"checked\"" else ""# />
-                                <label class="clearfix" for="trakt_use_recommended">
-                                    <span class="component-title">Use Recommended Shows:</span>
-                                    <span class="component-desc">Adds ability to add recommended shows from trakt.tv</span>
                                 </label>
                             </div>
                             <div class="field-pair">
@@ -1334,14 +1326,14 @@
 	                            <div class="field-pair">
 	                                <input type="checkbox" name="trakt_remove_watchlist" id="trakt_remove_watchlist" #if $sickbeard.TRAKT_REMOVE_WATCHLIST then "checked=\"checked\"" else ""# />
 	                                <label class="clearfix" for="trakt_remove_watchlist">
-	                                    <span class="component-title">Add/Remove episode from Watchlist:</span>
-	                                    <span class="component-desc">Add/Remove an episode from the watchlist after it is downloaded</span>
+	                                    <span class="component-title">Add/Remove Episode from Watchlist:</span>
+	                                    <span class="component-desc">Add/Remove an Episode from the watchlist after it is downloaded</span>
 	                                </label>
 									<input type="checkbox" name="trakt_remove_serieslist" id="trakt_remove_serieslist" #if $sickbeard.TRAKT_REMOVE_SERIESLIST then "checked=\"checked\"" else ""# />
-	                                <label class="clearfix" for="trakt_remove_serieslist">
-	                                    <span class="component-title">Remove series:</span>
-	                                    <span class="component-desc">Remove the whole series from the watchlist after any download</span>
-	                                </label>
+									<label class="clearfix" for="trakt_remove_serieslist">
+										<span class="component-title">Remove Series:</span>
+										<span class="component-desc">Remove the whole series from the watchlist after any download</span>
+									</label>
 	                            </div>
 	                            <div class="field-pair">
 	                                <input type="checkbox" name="trakt_start_paused" id="trakt_start_paused" #if $sickbeard.TRAKT_START_PAUSED then "checked=\"checked\"" else ""# />
@@ -1511,7 +1503,7 @@
 
     </div>
 
-</div>
+</div></div></div>
 
 <div class="clearfix"></div>
 <script type="text/javascript" charset="utf-8">
