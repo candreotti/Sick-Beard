@@ -364,7 +364,7 @@ $myShowList.sort(lambda x, y: cmp(x.name, y.name))
         #set $download_stat_tip = "no data"
     #end if
 
-    #set $nom = $cur_downloaded
+    #set $nom = $cur_downloaded + $cur_downloadable
     #set $den = $cur_total
     #if $den == 0:
         #set $den = 1
@@ -549,7 +549,7 @@ $myShowList.sort(lambda x, y: cmp(x.name, y.name))
         #set $download_stat_tip = "no data"
     #end if
 
-    #set $nom = $cur_downloaded
+    #set $nom = $cur_downloaded + $cur_downloadable
     #set $den = $cur_total
     #if $den == 0:
         #set $den = 1
