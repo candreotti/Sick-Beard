@@ -39,7 +39,7 @@
 			#set $ep_total = 0
 		#end if
 		
-		<font color="#85FF0A">$shows_total</font> Shows (<font color="#85FF0A">$shows_active</font> Active) | <font color="#85FF0A"><%=ep_downloaded%></font>#if $ep_snatched > 0 then " (" + "<font color=\"#85FF0A\">+" + str($ep_snatched) + "</font> snatched)" else ""# / <font color="#85FF0A">$ep_total</font> Episodes Downloaded | Daily Search: <font color="#85FF0A"><%=str(sickbeard.dailySearchScheduler.timeLeft()).split('.')[0]%></font> | Backlog Search: <font color="#85FF0A">$sbdatetime.sbdatetime.sbfdate($sickbeard.downloadableSearchScheduler.nextRun())</font> | Downloadable Search: <font color="#85FF0A">$sbdatetime.sbdatetime.sbfdate($sickbeard.backlogSearchScheduler.nextRun())</font>	
+		<div class="footerhighlight">$shows_total</div> Shows (<div class="footerhighlight">$shows_active</div> Active) | <div class="footerhighlight"><%=ep_downloaded%></div>#if $ep_snatched > 0 then " (" + "<div class=\"footerhighlight\">+" + str($ep_snatched) + "</div> snatched)" else ""# / <div class="footerhighlight">$ep_total</div> Episodes Downloaded | Daily Search: <div class="footerhighlight"><%=str(sickbeard.dailySearchScheduler.timeLeft()).split('.')[0]%></div> | Backlog Search: <div class="footerhighlight">$sbdatetime.sbdatetime.sbfdate($sickbeard.backlogSearchScheduler.nextRun())</div> | Downloadable Search: <div class="footerhighlight">$sbdatetime.sbdatetime.sbfdate($sickbeard.downloadableSearchScheduler.nextRun())</div>	
 
 		</div>
 	<!-- 
