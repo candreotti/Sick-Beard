@@ -205,7 +205,18 @@ class TransmissionAPI(GenericClient):
             })
             self._request(method='post', data=post_data)
 
-            return self.response.json()['result'] == "success"
+            if not self.response.json()['result'] == "success":
+                return False
+
+            if not sickbeard.TORRENT_PAUSED:
+                arguments = {'ids': [result.hash]
+                }
+                post_data = json.dumps({'arguments': arguments,
+                            'method': 'torrent-start-now',
+                })
+                self._request(method='post', data=post_data)
+
+                return self.response.json()['result'] == "success"
         else:
             self.remove_torrent_downloaded(result.hash) 
             return False
