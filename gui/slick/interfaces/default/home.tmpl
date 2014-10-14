@@ -172,7 +172,7 @@ function invertSort(){
         if (match == null || match[1] == "?")
           return -10;
 
-        var nums = match[1].split(" / ");
+        var nums = match[1].split("/");
         if (nums[0].indexOf("+") != -1) {
             var num_parts = nums[0].split("+");
             nums[0] = num_parts[0];
@@ -180,13 +180,14 @@ function invertSort(){
 
         nums[0] = parseInt(nums[0])
         nums[1] = parseInt(nums[1])
+        nums[2] = parseInt(nums[2])
 
-        if (nums[0] === 0)
-          return nums[1];
+        if ((nums[0] + nums[1]) === 0)
+          return nums[2];
 
-        var finalNum = parseInt($max_download_count*nums[0]/nums[1]);
+        var finalNum = parseInt($max_download_count*(nums[0] + nums[1])/nums[2]);
         if (finalNum > 0)
-          finalNum += nums[0];
+          finalNum += (nums[0] + nums[1]);
 
         return finalNum;
     },
