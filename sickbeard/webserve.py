@@ -3793,7 +3793,7 @@ class Home(MainHandler):
                                       showObj.name.encode('utf-8')), 'requires': haveXBMC})
                 t.submenu.append({'title': 'Preview Rename', 'path': 'home/testRename?show=%d' % showObj.indexerid})
                 if sickbeard.USE_TRAKT:
-                    t.submenu.append({'title': 'Unlibrary Skipped', 'path': 'home/unlibrary?show=%d' % showObj.indexerid})
+                    t.submenu.append({'title': 'Unlibrary Skipped', 'path': 'home/unlibrary?show=%d' % showObj.indexerid, 'confirm': True})
                 if sickbeard.USE_SUBTITLES and not sickbeard.showQueueScheduler.action.isBeingSubtitled(
                         showObj) and showObj.subtitles:
                     t.submenu.append(

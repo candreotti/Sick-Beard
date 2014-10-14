@@ -13,6 +13,7 @@ function initActions() {
     $("#SubMenu a[href$='/home/updatePLEX/']").addClass('btn').html('<span class="ui-icon ui-icon-refresh pull-left"></span> Update PLEX');
     $("#SubMenu a:contains('Force')").addClass('btn').html('<span class="ui-icon ui-icon-transfer-e-w pull-left"></span> Force Full Update');
     $("#SubMenu a:contains('Rename')").addClass('btn').html('<span class="ui-icon ui-icon-tag pull-left"></span> Preview Rename');
+    $("#SubMenu a:contains('Unlibrary Skipped')").addClass('btn').html('<span class="ui-icon ui-icon-tag pull-left"></span> Unlibrary Skipped');
     $("#SubMenu a[href$='/config/subtitles/']").addClass('btn').html('<span class="ui-icon ui-icon-comment pull-left"></span> Search Subtitles');
     $("#SubMenu a[href*='/home/subtitleShow']").addClass('btn').html('<span class="ui-icon ui-icon-comment pull-left"></span> Download Subtitles');
     $("#SubMenu a:contains('Anime')").addClass('btn').html('<span class="ui-icon ui-icon-anime pull-left"></span> Anime');
