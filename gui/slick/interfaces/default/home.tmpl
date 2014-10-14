@@ -427,7 +427,7 @@ $myShowList.sort(lambda x, y: cmp(x.name, y.name))
 					#if $cur_airs_next
 					#set $ldatetime = $network_timezones.parse_date_time($cur_airs_next,$curShow.airs,$curShow.network)
 						<div class="show-date">Next Ep: $sbdatetime.sbdatetime.sbfdate($ldatetime)</div>
-					#else if $curShow.status != "Ended" and int($curShow.paused) == 1:
+					#else if int($curShow.paused) == 1:
 						<div class="show-status">Paused</div>
 					#else if $curShow.status:
 						<div class="show-status">$curShow.status</div>
@@ -627,7 +627,7 @@ $myShowList.sort(lambda x, y: cmp(x.name, y.name))
         //-->
         </script>
     </td>
-    <td align="center"><img src="$sbRoot/images/#if int($curShow.paused) == 0 and $curShow.status != "Ended" then "yes16.png\" alt=\"Y\"" else "no16.png\" alt=\"N\""# width="16" height="16" /></td>
+    <td align="center"><img src="$sbRoot/images/#if int($curShow.paused) == 0 then "yes16.png\" alt=\"Y\"" else "no16.png\" alt=\"N\""# width="16" height="16" /></td>
     <td align="center">$curShow.status</td>
   </tr>
 
