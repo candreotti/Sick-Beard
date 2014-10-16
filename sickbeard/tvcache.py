@@ -296,6 +296,7 @@ class TVCache():
 
 
     def findNeededEpisodes(self, episode, manualSearch=False):
+        res = {}
         neededEps = {}
         cl = []
 
@@ -304,52 +305,40 @@ class TVCache():
             sqlResults = myDB.select(
                 "SELECT * FROM [" + self.providerID + "] WHERE indexerid = ? AND season = ? AND episodes LIKE ?",
                 [episode.show.indexerid, episode.season, "%|" + str(episode.episode) + "|%"])
+            res[episode] = [sqlResults]
         else:
             for epObj in episode:
-                cl.append([
+                sqlResults = myDB.select(
                     "SELECT * FROM [" + self.providerID + "] WHERE indexerid = ? AND season = ? AND episodes LIKE ? "
                     "AND quality IN (" + ",".join([str(x) for x in epObj.wantedQuality]) + ")",
-                    [epObj.show.indexerid, epObj.season, "%|" + str(epObj.episode) + "|%"]])
+                    [epObj.show.indexerid, epObj.season, "%|" + str(epObj.episode) + "|%"])
+                res[epObj] = [sqlResults]
 
-            sqlResults = myDB.mass_action(cl, fetchall=True)
-            sqlResults = list(itertools.chain(*sqlResults))
 
         # for each cache entry
-        for curResult in sqlResults:
+        for ep in res:
+            for curResult in sqlResults:
 
-            # skip non-tv crap
-            if not show_name_helpers.filterBadReleases(curResult["name"], parse=False):
-                continue
-
-            # get the show object, or if it's not one of our shows then ignore it
-            showObj = helpers.findCertainShow(sickbeard.showList, int(curResult["indexerid"]))
-            if not showObj:
-                continue
-
-            # skip if provider is anime only and show is not anime
-            if self.provider.anime_only and not showObj.is_anime:
-                logger.log(u"" + str(showObj.name) + " is not an anime, skiping", logger.DEBUG)
-                continue
-
-            # get season and ep data (ignoring multi-eps for now)
-            curSeason = int(curResult["season"])
-            if curSeason == -1:
-                continue
-
-            if sickbeard.TORRENT_METHOD == 'transmission':
-                listCurEp = curResult["episodes"].split("|")
-            else:
-                listCurEp = curResult["episodes"].split("|")[1]
-
-            if not listCurEp:
-                continue
-
-            for curEp in listCurEp:
-
-                if not curEp:
+                # skip non-tv crap
+                if not show_name_helpers.filterBadReleases(curResult["name"], parse=False):
+                    continue
+    
+                # get the show object, or if it's not one of our shows then ignore it
+                showObj = helpers.findCertainShow(sickbeard.showList, int(curResult["indexerid"]))
+                if not showObj:
                     continue
 
-                curEp = int(curEp)
+                # skip if provider is anime only and show is not anime
+                if self.provider.anime_only and not showObj.is_anime:
+                    logger.log(u"" + str(showObj.name) + " is not an anime, skiping", logger.DEBUG)
+                    continue
+
+                # get season and ep data (ignoring multi-eps for now)
+                curSeason = int(curResult["season"])
+                if curSeason == -1:
+                    continue
+
+                curEp = int(ep.episode)
 
                 curQuality = int(curResult["quality"])
                 curReleaseGroup = curResult["release_group"]
@@ -362,7 +351,7 @@ class TVCache():
                     continue
 
                 epObj = showObj.getEpisode(curSeason, curEp)
-    
+
                 # build a result object
                 title = curResult["name"]
                 url = curResult["url"]
