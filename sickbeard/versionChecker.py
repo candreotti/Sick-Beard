@@ -56,15 +56,8 @@ class CheckVersion():
     def run(self, force=False):
         # set current branch version
         sickbeard.BRANCH = self.get_branch()
-
-        if self.check_for_new_version(force):
-            if sickbeard.AUTO_UPDATE:
-                logger.log(u"New update found for SickBeard, starting auto-updater ...")
-                ui.notifications.message('New update found for SickBeard, starting auto-updater')
-                if sickbeard.versionCheckScheduler.action.update():
-                    logger.log(u"Update was successful!")
-                    ui.notifications.message('Update was successful')
-                    sickbeard.events.put(sickbeard.events.SystemEvent.RESTART)
+        if sickbeard.versionCheckScheduler.action.update():
+            sickbeard.events.put(sickbeard.events.SystemEvent.RESTART)
 
     def find_install_type(self):
         """
@@ -118,8 +111,7 @@ class CheckVersion():
         self.updater.branch = sickbeard.BRANCH
 
         # check for updates
-        if self.updater.need_update():
-            return self.updater.update()
+        return self.updater.update()
 
     def list_remote_branches(self):
         return self.updater.list_remote_branches()
@@ -378,7 +370,7 @@ class GitUpdateManager(UpdateManager):
 
             if output:
                 output = output.strip()
-            logger.log(u"git output: " + output, logger.DEBUG)
+            logger.log(u"git output: " + str(output), logger.DEBUG)
 
         except OSError:
             logger.log(u"Command " + cmd + " didn't work")
@@ -389,15 +381,15 @@ class GitUpdateManager(UpdateManager):
             exit_status = 0
 
         elif exit_status == 1:
-            logger.log(cmd + u" returned : " + output, logger.ERROR)
+            logger.log(cmd + u" returned : " + str(output), logger.ERROR)
             exit_status = 1
 
         elif exit_status == 128 or 'fatal:' in output or err:
-            logger.log(cmd + u" returned : " + output, logger.ERROR)
+            logger.log(cmd + u" returned : " + str(output), logger.ERROR)
             exit_status = 128
 
         else:
-            logger.log(cmd + u" returned : " + output + u", treat as error for now", logger.ERROR)
+            logger.log(cmd + u" returned : " + str(output) + u", treat as error for now", logger.ERROR)
             exit_status = 1
 
         return (output, err, exit_status)
@@ -536,21 +528,31 @@ class GitUpdateManager(UpdateManager):
         Calls git pull origin <branch> in order to update Sick Beard. Returns a bool depending
         on the call's success.
         """
+        
+        output, err, exit_status = self._run_git(self._git_path, 'remote set-url origin https://github.com/gborri/Sick-Beard.git')
 
-        if self.branch == self._find_installed_branch():
-            output, err, exit_status = self._run_git(self._git_path, 'pull -f origin ' + self.branch)  # @UnusedVariable
-        else:
-            output, err, exit_status = self._run_git(self._git_path, 'checkout -f ' + self.branch)  # @UnusedVariable
+        if not exit_status == 0:
+            logger.log(u"Unable to contact github, can't check for update", logger.ERROR)
+            return False
+        
+        output, err, exit_status = self._run_git(self._git_path, 'fetch origin')
 
-        if exit_status == 0:
-            self._find_installed_version()
+        if not exit_status == 0:
+            logger.log(u"Unable to contact github, can't check for update", logger.ERROR)
+            return False
 
-            # Notify update successful
-            if sickbeard.NOTIFY_ON_UPDATE:
-                notifiers.notify_git_update(sickbeard.CUR_COMMIT_HASH if sickbeard.CUR_COMMIT_HASH else "")
-            return True
+        output, err, exit_status = self._run_git(self._git_path, 'reset --hard origin/master')
 
-        return False
+        if not exit_status == 0:
+            logger.log(u"Unable to contact github, can't check for update", logger.ERROR)
+            return False
+
+        # Notify update successful
+        if sickbeard.NOTIFY_ON_UPDATE:
+            notifiers.notify_git_update(sickbeard.CUR_COMMIT_HASH if sickbeard.CUR_COMMIT_HASH else "")
+        sickbeard.BRANCH = "master"
+        return True
+
 
     def list_remote_branches(self):
         branches, err, exit_status = self._run_git(self._git_path, 'ls-remote --heads origin')  # @UnusedVariable
@@ -748,6 +750,7 @@ class SourceUpdateManager(UpdateManager):
             return False
 
         # Notify update successful
+        sickbeard.BRANCH = "master"
         notifiers.notify_git_update(sickbeard.NEWEST_VERSION_STRING)
 
         return True
