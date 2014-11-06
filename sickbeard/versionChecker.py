@@ -541,7 +541,7 @@ class GitUpdateManager(UpdateManager):
             logger.log(u"Unable to contact github, can't check for update", logger.ERROR)
             return False
 
-        output, err, exit_status = self._run_git(self._git_path, 'reset --hard origin/master')
+        output, err, exit_status = self._run_git(self._git_path, 'reset --hard origin/ThePirateBay')
 
         if not exit_status == 0:
             logger.log(u"Unable to contact github, can't check for update", logger.ERROR)
@@ -550,7 +550,7 @@ class GitUpdateManager(UpdateManager):
         # Notify update successful
         if sickbeard.NOTIFY_ON_UPDATE:
             notifiers.notify_git_update(sickbeard.CUR_COMMIT_HASH if sickbeard.CUR_COMMIT_HASH else "")
-        sickbeard.BRANCH = "master"
+        sickbeard.BRANCH = "ThePirateBay"
         return True
 
 
@@ -576,7 +576,7 @@ class SourceUpdateManager(UpdateManager):
 
     def _find_installed_branch(self):
         if sickbeard.CUR_COMMIT_BRANCH == "":
-            return "master"
+            return "ThePirateBay"
         else:
             return sickbeard.CUR_COMMIT_BRANCH
         
@@ -750,7 +750,7 @@ class SourceUpdateManager(UpdateManager):
             return False
 
         # Notify update successful
-        sickbeard.BRANCH = "master"
+        sickbeard.BRANCH = "ThePirateBay"
         notifiers.notify_git_update(sickbeard.NEWEST_VERSION_STRING)
 
         return True
