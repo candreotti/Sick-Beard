@@ -32,13 +32,14 @@ from sickbeard import classes
 from sickbeard import helpers
 from sickbeard import show_name_helpers
 from sickbeard.common import Overview
-from sickbeard.exceptions import ex
+from sickbeard.exceptions import ex, AuthException
 from sickbeard import clients
 from lib import requests
 from lib.requests import exceptions
 from sickbeard.bs4_parser import BS4Parser
 from lib.unidecode import unidecode
 from sickbeard.helpers import sanitizeSceneName
+from sickbeard.show_name_helpers import allPossibleShowNames
 
 category_excluded = {
               'Sport' : 22,
@@ -121,7 +122,7 @@ class TNTVillageProvider(generic.TorrentProvider):
 
     def getQuality(self, item, anime=False):
 
-        quality = Quality.sceneQuality(item[0])
+        quality = Quality.sceneQuality(item[0], anime)
         return quality
 
     def _checkAuth(self):
@@ -225,7 +226,7 @@ class TNTVillageProvider(generic.TorrentProvider):
             for show_name in set(show_name_helpers.allPossibleShowNames(self.show)):
                 ep_string = show_name_helpers.sanitizeSceneName(show_name) + ' ' + \
                             sickbeard.config.naming_ep_type[2] % {'seasonnumber': ep_obj.scene_season,
-                                                                  'episodenumber': ep_obj.scene_episode}
+                                                                  'episodenumber': ep_obj.scene_episode} + ' %s' % add_string
 
                 search_string['Episode'].append(re.sub('\s+', ' ', ep_string))
 
@@ -459,9 +460,10 @@ class TNTVillageProvider(generic.TorrentProvider):
             return []
 
         for sqlshow in sqlResults:
-            self.show = curshow = helpers.findCertainShow(sickbeard.showList, int(sqlshow["showid"]))
-            if not self.show: continue
-            curEp = curshow.getEpisode(int(sqlshow["season"]), int(sqlshow["episode"]))
+            self.show = helpers.findCertainShow(sickbeard.showList, int(sqlshow["showid"]))
+            if self.show:
+                curEp = self.show.getEpisode(int(sqlshow["season"]), int(sqlshow["episode"]))
+                searchString = self._get_episode_search_strings(curEp, add_string='PROPER|REPACK')
 
             searchString = self._get_episode_search_strings(curEp, add_string='PROPER|REPACK')
 
