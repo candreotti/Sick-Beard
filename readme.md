@@ -10,6 +10,7 @@ Feature list of this branch:
 - trackt intregration enhancement: watched episode on show added on sickbeard are marked as Ignored
 - trackt intregration enhancement: always have a numebr (configurable) of unwatched episode for not paused show
 - Chech availability of torrent file and mark episode to DOWNLOADABLE
+- With Trasmission client you can download single episode also for multi episode torrent file 
 
 *SickBeard TPB is currently an alpha release. There may be severe bugs in it and at any given time it may not work at all.*
 
