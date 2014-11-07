@@ -350,15 +350,13 @@ class TVCache():
                                Quality.qualityStrings[curQuality], logger.DEBUG)
                     continue
 
-                epObj = showObj.getEpisode(curSeason, curEp)
-
                 # build a result object
                 title = curResult["name"]
                 url = curResult["url"]
 
                 logger.log(u"Found result " + title + " at " + url)
 
-                result = self.provider.getResult([epObj])
+                result = self.provider.getResult([ep])
                 result.show = showObj
                 result.url = url
                 result.name = title
@@ -368,10 +366,10 @@ class TVCache():
                 result.content = None
 
                 # add it to the list
-                if epObj not in neededEps:
-                    neededEps[epObj] = [result]
+                if ep not in neededEps:
+                    neededEps[ep] = [result]
                 else:
-                    neededEps[epObj].append(result)
+                    neededEps[ep].append(result)
 
         # datetime stamp this search so cache gets cleared
         self.setLastSearch()
