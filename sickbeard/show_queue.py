@@ -373,12 +373,12 @@ class QueueItemAdd(ShowQueueItem):
 
         # if they started with WANTED eps then run the backlog
         if self.default_status == WANTED:
-            sickbeard.traktCheckerScheduler.action.updateWantedList(self.show.indexerid,True)
+            sickbeard.traktCheckerScheduler.action.updateWantedList(self.show.indexerid)
             logger.log(u"Launching backlog for this show since its episodes are WANTED")
             sickbeard.backlogSearchScheduler.action.searchBacklog([self.show])  #@UndefinedVariable
         # if they started with SKIPPED eps then run the downloadable search
         elif self.default_status == SKIPPED:
-            sickbeard.traktCheckerScheduler.action.updateWantedList(self.show.indexerid,True)
+            sickbeard.traktCheckerScheduler.action.updateWantedList(self.show.indexerid)
             logger.log(u"Launching downloadable search for this show since its episodes are SKIPPED")
             sickbeard.downloadableSearchScheduler.action.searchDownloadable([self.show]) #@UndefinedVariable
 

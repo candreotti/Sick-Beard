@@ -291,6 +291,19 @@ class MainHandler(RequestHandler):
 
         redirect("/home/")
 
+    def setPosterSortBy(self, sort):
+
+        if sort not in ('name', 'date', 'network', 'progress'):
+            sort = 'name'
+
+        sickbeard.POSTER_SORTBY = sort
+        sickbeard.save_config()
+
+    def setPosterSortDir(self, direction):
+
+        sickbeard.POSTER_SORTDIR = int(direction)
+        sickbeard.save_config()
+
     def setHistoryLayout(self, layout):
 
         if layout not in ('compact', 'detailed'):
@@ -1464,9 +1477,7 @@ class ConfigGeneral(MainHandler):
 
     def saveRootDirs(self, rootDirString=None):
         sickbeard.ROOT_DIRS = rootDirString
-        
-    def saveImdbWatchlists(self, imdbWatchlistString=None):
-        sickbeard.IMDB_WATCHLISTCSV = imdbWatchlistString
+
 
     def saveAddShowDefaults(self, defaultStatus, anyQualities, bestQualities, defaultFlattenFolders, subtitles=False,
                             anime=False, scene=False):
@@ -1524,9 +1535,9 @@ class ConfigGeneral(MainHandler):
                     use_api=None, api_key=None, indexer_default=None, timezone_display=None, cpu_preset=None,
                     web_password=None, version_notify=None, enable_https=None, https_cert=None, https_key=None,
                     handle_reverse_proxy=None, sort_article=None, auto_update=None, notify_on_update=None,
-                    proxy_setting=None, proxy_indexers=None, anon_redirect=None, git_path=None, calendar_unprotected=None,
+                    proxy_setting=None, proxy_indexers=None, anon_redirect=None, git_path=None, git_remote=None, calendar_unprotected=None,
                     fuzzy_dating=None, trim_zero=None, date_preset=None, date_preset_na=None, time_preset=None,
-                    indexer_timeout=None, play_videos=None, rootDir=None, use_imdbwl=None, imdbWatchlistCsv=None, theme_name=None):
+                    indexer_timeout=None, play_videos=None, rootDir=None, theme_name=None):
 
         results = []
 
@@ -1536,7 +1547,6 @@ class ConfigGeneral(MainHandler):
         config.change_VERSION_NOTIFY(config.checkbox_to_value(version_notify))
         sickbeard.AUTO_UPDATE = config.checkbox_to_value(auto_update)
         sickbeard.NOTIFY_ON_UPDATE = config.checkbox_to_value(notify_on_update)
-        sickbeard.USE_IMDBWATCHLIST = config.checkbox_to_value(use_imdbwl)
         # sickbeard.LOG_DIR is set in config.change_LOG_DIR()
 
         sickbeard.UPDATE_SHOWS_ON_START = config.checkbox_to_value(update_shows_on_start)
@@ -1548,6 +1558,7 @@ class ConfigGeneral(MainHandler):
         sickbeard.PROXY_SETTING = proxy_setting
         sickbeard.PROXY_INDEXERS = config.checkbox_to_value(proxy_indexers)
         sickbeard.GIT_PATH = git_path
+        sickbeard.GIT_REMOTE = git_remote
         sickbeard.CALENDAR_UNPROTECTED = config.checkbox_to_value(calendar_unprotected)
         # sickbeard.LOG_DIR is set in config.change_LOG_DIR()
 

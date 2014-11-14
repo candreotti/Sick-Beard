@@ -20,6 +20,7 @@ def TraktCall(method, api, username=None, password=None, data={}):
 
     Returns: A boolean representing success
     """
+
     #logger.log("trakt: Call method " + method, logger.DEBUG)
 
     # if the API isn't given then it failed

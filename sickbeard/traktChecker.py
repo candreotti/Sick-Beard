@@ -45,12 +45,21 @@ class TraktChecker():
         if not sickbeard.USE_TRAKT:
             return
 
+        logger.log(u"Start getting list from Tracktv", logger.DEBUG)
+
+        logger.log(u"Getting ShowWatchlist", logger.DEBUG)
         if not self._getShowWatchlist():
             return
+
+        logger.log(u"Getting EpisodeWatchlist", logger.DEBUG)
         if not self._getEpisodeWatchlist():
             return
+
+        logger.log(u"Getting ShowProgress", logger.DEBUG)
         if not self._getShowProgress():
             return
+
+        logger.log(u"Getting EpisodeWatched", logger.DEBUG)
         if not self._getEpisodeWatched():
             return
 
@@ -263,7 +272,7 @@ class TraktChecker():
 				
             logger.log(u"Stop looking if some show need to be added to watchlist", logger.DEBUG)
 
-    def updateWantedList(self, indexer_id = None, paused=False):
+    def updateWantedList(self, indexer_id = None):
 
         num_of_download = sickbeard.TRAKT_NUM_EP
 
@@ -273,21 +282,18 @@ class TraktChecker():
 
         logger.log(u"Start looking if having " + str(num_of_download) + " episode not watched", logger.DEBUG)
 
-        if paused == False:
-            p=0
-        else:
-            p=1
-
         myDB = db.DBConnection()
 
-        sql_selection="SELECT indexer,show_name, indexer_id, season, episode, paused FROM (SELECT * FROM tv_shows s,tv_episodes e WHERE s.indexer_id = e.showid) T1 WHERE T1.paused = ? and T1.episode_id IN (SELECT T2.episode_id FROM tv_episodes T2 WHERE T2.showid = T1.indexer_id and T2.status in (?,?) and T2.season!=0 and airdate is not null ORDER BY T2.season,T2.episode LIMIT 1)"
+        sql_selection="SELECT indexer,show_name, indexer_id, season, episode, paused FROM (SELECT * FROM tv_shows s,tv_episodes e WHERE s.indexer_id = e.showid) T1 WHERE T1.episode_id IN (SELECT T2.episode_id FROM tv_episodes T2 WHERE T2.showid = T1.indexer_id and T2.status in (?,?) and T2.season!=0 and airdate is not null ORDER BY T2.season,T2.episode LIMIT 1)"
 
         if indexer_id is not None:
             sql_selection=sql_selection + " and indexer_id = " + str(indexer_id)
+        else:
+            sql_selection=sql_selection + " and T1.paused = 0"
 
 	sql_selection=sql_selection + " ORDER BY T1.show_name,season,episode"
 
-        results = myDB.select(sql_selection,[p,SKIPPED,DOWNLOADABLE])
+        results = myDB.select(sql_selection,[SKIPPED,DOWNLOADABLE])
 
         for cur_result in results:
 
@@ -299,8 +305,8 @@ class TraktChecker():
             newShow = helpers.findCertainShow(sickbeard.showList, int(indexer_id))
             tvdb_id = str(helpers.mapIndexersToShow(newShow)[1])
 
-            num_op_ep=0
-            season = 0
+            num_of_ep=0
+            season = 1
             episode = 0
 
             last_per_season = TraktCall("show/seasons.json/%API%/" + str(tvdb_id), sickbeard.TRAKT_API, sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_PASSWORD)
@@ -319,7 +325,6 @@ class TraktChecker():
                     sn_sb = 1
                     ep_sb = 1
                     num_of_ep = num_of_download
-                    episode = 0
             else:
                 logger.log(u"Show founded in Watched list", logger.DEBUG)
 
@@ -346,7 +351,7 @@ class TraktChecker():
                 if episode == 0 or (s*100+e) <= (int(last_s[0]['season'])*100+int(last_s[0]['episodes'])): 
 
                     if (s*100+e) > (season*100+episode):
-                        if not paused:
+                        if not cur_result["paused"]:
                             if newShow is not None:
                                 self.setEpisodeToWanted(newShow, s, e)
                                 if not self.episode_in_watchlist(newShow, s, e):
@@ -568,10 +573,16 @@ class TraktChecker():
                 }
             if update=="add" and sickbeard.TRAKT_REMOVE_WATCHLIST:
                 result=TraktCall("show/episode/watchlist/%API%", sickbeard.TRAKT_API, sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_PASSWORD, data)
+                if not result:
+                    logger.log(u"Could not connect to trakt service, aborting add of episode to watchlist", logger.ERROR)
+                return
+
             elif update=="remove" and sickbeard.TRAKT_REMOVE_WATCHLIST:
                 result=TraktCall("show/episode/unwatchlist/%API%", sickbeard.TRAKT_API, sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_PASSWORD, data)
-            if not self._getEpisodeWatchlist():
-                return False
+                if not result:
+                    logger.log(u"Could not connect to trakt service, aborting remove of episode form watchlist", logger.ERROR)
+                return
+            self._getEpisodeWatchlist()
         elif type=="show":
             # traktv URL parameters
             data = {
@@ -581,10 +592,15 @@ class TraktChecker():
                 }
             if update=="add"  and sickbeard.TRAKT_REMOVE_SHOW_WATCHLIST:
                 result=TraktCall("show/watchlist/%API%", sickbeard.TRAKT_API, sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_PASSWORD, data)
+                if not result:
+                    logger.log(u"Could not connect to trakt service, aborting add of show to watchlist", logger.ERROR)
+                return
             elif update=="remove" and sickbeard.TRAKT_REMOVE_SHOW_WATCHLIST:
             	result=TraktCall("show/unwatchlist/%API%", sickbeard.TRAKT_API, sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_PASSWORD, data)
-            if not self._getShowWatchlist():
-                return False
+                if not result:
+                    logger.log(u"Could not connect to trakt service, aborting remove of show form watchlist", logger.ERROR)
+                return
+            self._getShowWatchlist()
         else:
             logger.log(u"Error invoking update_watchlist procedure, check parameter", logger.ERROR)
             return False

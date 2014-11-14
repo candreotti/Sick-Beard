@@ -26,7 +26,7 @@ import traceback
 
 import sickbeard
 
-from common import SNATCHED, SNATCHED_PROPER, SNATCHED_BEST, DOWNLOADABLE, Quality, SEASON_RESULT, MULTI_EP_RESULT, Overview
+from common import SNATCHED, SNATCHED_PROPER, SNATCHED_BEST, DOWNLOADABLE, IGNORED, Quality, SEASON_RESULT, MULTI_EP_RESULT, Overview
 
 from sickbeard import logger, db, show_name_helpers, exceptions, helpers
 from sickbeard import sab
@@ -194,7 +194,7 @@ def downloadableEpisode(result, endStatus=DOWNLOADABLE):
     # don't notify when we re-download an episode
     sql_l = []
     for curEpObj in result.episodes:
-        if curEpObj.status != endStatus:
+        if curEpObj.status != endStatus and curEpObj.status != IGNORED:
             with curEpObj.lock:
                 curEpObj.status = endStatus
                 sql_l.append(curEpObj.get_sql())
