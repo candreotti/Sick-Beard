@@ -19,10 +19,8 @@
 import socket
 
 import sickbeard
-
 from sickbeard import logger, common
 from sickbeard.exceptions import ex
-
 from lib.growl import gntp
 
 

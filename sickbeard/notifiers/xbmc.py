@@ -23,11 +23,11 @@ import base64
 import time
 
 import sickbeard
-
 from sickbeard import logger
 from sickbeard import common
 from sickbeard.exceptions import ex
 from sickbeard.encodingKludge import fixStupidEncodings
+
 
 try:
     import xml.etree.cElementTree as etree
