@@ -3124,7 +3124,8 @@ class NewHomeAddShows(MainHandler):
                                                         flatten_folders=sickbeard.FLATTEN_FOLDERS_DEFAULT,
                                                         subtitles=sickbeard.SUBTITLES_DEFAULT,
                                                         anime=sickbeard.ANIME_DEFAULT,
-                                                        scene=sickbeard.SCENE_DEFAULT)
+                                                        scene=sickbeard.SCENE_DEFAULT,
+                                                        paused=1)
 
             ui.notifications.message('Show added', 'Adding the specified show into ' + show_dir)
         else:
@@ -3233,7 +3234,8 @@ class NewHomeAddShows(MainHandler):
         # add the show
         sickbeard.showQueueScheduler.action.addShow(indexer, indexer_id, show_dir, int(defaultStatus), newQuality,
                                                     flatten_folders, indexerLang, subtitles, anime,
-                                                    scene)  # @UndefinedVariable
+                                                    scene, 
+                                                    paused=1)  # @UndefinedVariable
         ui.notifications.message('Show added', 'Adding the specified show into ' + show_dir)
 
         return finishAddShow()
@@ -3306,7 +3308,8 @@ class NewHomeAddShows(MainHandler):
                                                             flatten_folders=sickbeard.FLATTEN_FOLDERS_DEFAULT,
                                                             subtitles=sickbeard.SUBTITLES_DEFAULT,
                                                             anime=sickbeard.ANIME_DEFAULT,
-                                                            scene=sickbeard.SCENE_DEFAULT)
+                                                            scene=sickbeard.SCENE_DEFAULT,
+                                                            paused=1)
                 num_added += 1
 
         if num_added:
@@ -4164,6 +4167,8 @@ class Home(MainHandler):
                 errors.append("Unable to force an update on the downloadable search.")
 
         if not paused:
+            sickbeard.traktCheckerScheduler.action.refreshEpisodeWatched()
+            sickbeard.traktCheckerScheduler.action.refreshEpisodeWatchlist()
             if not sickbeard.traktCheckerScheduler.action.updateWantedList():
                 errors.append("Unable to force an update on wanted episode")
 

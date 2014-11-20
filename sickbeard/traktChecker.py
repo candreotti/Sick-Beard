@@ -43,6 +43,7 @@ class TraktChecker():
 
     def run(self, force=False):
         if not sickbeard.USE_TRAKT:
+            logger.log(u"Trakt integrazione disabled, quit", logger.DEBUG)
             return
 
         logger.log(u"Start getting list from Tracktv", logger.DEBUG)
@@ -176,6 +177,13 @@ class TraktChecker():
 
         return True
 
+    def refreshEpisodeWatched(self):
+
+       if not self._getEpisodeWatched():
+           return False
+
+       return True
+
     def refreshEpisodeWatchlist(self):
 
        if not self._getEpisodeWatchlist():
@@ -274,6 +282,10 @@ class TraktChecker():
 
     def updateWantedList(self, indexer_id = None):
 
+        if not sickbeard.USE_TRAKT:
+            logger.log(u"Trakt integrazione disabled, quit", logger.DEBUG)
+            return
+            
         num_of_download = sickbeard.TRAKT_NUM_EP
 
         #if num_of_download == 0 or self.EpisodeWatched == 'NULL':
@@ -345,6 +357,7 @@ class TraktChecker():
 
             for x in range(0,num_of_ep):
 
+                logger.log(u"s: " + s + ", e: " + e, logger.DEBUG)
                 last_s = [last_x_s for last_x_s in last_per_season if last_x_s['season'] == s]
                 if last_s is None:
                     break
@@ -367,7 +380,7 @@ class TraktChecker():
                                 return False
                     e = e + 1
 
-                elif (s*100+e) == (int(last_s[0]['season'])*100+int(last_s[0]['episodes'])):
+                if (s*100+e) == (int(last_s[0]['season'])*100+int(last_s[0]['episodes'])):
                     s = s + 1
                     e = 1
 				

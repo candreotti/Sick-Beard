@@ -373,11 +373,15 @@ class QueueItemAdd(ShowQueueItem):
 
         # if they started with WANTED eps then run the backlog
         if self.default_status == WANTED:
+            sickbeard.traktCheckerScheduler.action.refreshEpisodeWatched()
+            sickbeard.traktCheckerScheduler.action.refreshEpisodeWatchlist()
             sickbeard.traktCheckerScheduler.action.updateWantedList(self.show.indexerid)
             logger.log(u"Launching backlog for this show since its episodes are WANTED")
             sickbeard.backlogSearchScheduler.action.searchBacklog([self.show])  #@UndefinedVariable
         # if they started with SKIPPED eps then run the downloadable search
         elif self.default_status == SKIPPED:
+            sickbeard.traktCheckerScheduler.action.refreshEpisodeWatched()
+            sickbeard.traktCheckerScheduler.action.refreshEpisodeWatchlist()
             sickbeard.traktCheckerScheduler.action.updateWantedList(self.show.indexerid)
             logger.log(u"Launching downloadable search for this show since its episodes are SKIPPED")
             sickbeard.downloadableSearchScheduler.action.searchDownloadable([self.show]) #@UndefinedVariable
@@ -390,6 +394,8 @@ class QueueItemAdd(ShowQueueItem):
 
         if sickbeard.USE_TRAKT:
             # if there are specific episodes that need to be added by trakt
+
+            sickbeard.traktCheckerScheduler.action.refreshEpisodeWatchlist()
             sickbeard.traktCheckerScheduler.action.manageNewShow(self.show)
 
             # add show to trakt.tv library
@@ -397,6 +403,7 @@ class QueueItemAdd(ShowQueueItem):
                 sickbeard.traktCheckerScheduler.action.addShowToTraktLibrary(self.show)
 
             if sickbeard.TRAKT_REMOVE_SHOW_WATCHLIST:
+                sickbeard.traktCheckerScheduler.action.refreshShowWatchlist()
                 if not sickbeard.traktCheckerScheduler.action.show_in_watchlist(self.show):
                     logger.log(u"Show: tvdb_id " + str(self.show.indexerid) + ", Title " +  str(self.show.name) + " should be added to watchlist", logger.DEBUG)
                     if not sickbeard.traktCheckerScheduler.action.update_watchlist("show", "add", self.show, 0, 0):

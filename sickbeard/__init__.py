@@ -39,6 +39,7 @@ from sickbeard.config import CheckSection, check_setting_int, check_setting_str,
     naming_ep_type
 from sickbeard import searchBacklog, searchDownloadable, showUpdater, versionChecker, properFinder, autoPostProcesser, \
     subtitles, traktChecker
+from sickbeard.automations import imdbChecker
 from sickbeard import helpers, db, exceptions, show_queue, search_queue, scheduler, show_name_helpers
 from sickbeard import logger
 from sickbeard import naming
@@ -503,6 +504,7 @@ def initialize(consoleLogging=True):
             USE_XBMC, XBMC_ALWAYS_ON, XBMC_NOTIFY_ONSNATCH, XBMC_NOTIFY_ONDOWNLOAD, XBMC_NOTIFY_ONDOWNLOADABLE, XBMC_NOTIFY_ONSUBTITLEDOWNLOAD, XBMC_UPDATE_FULL, XBMC_UPDATE_ONLYFIRST, \
             XBMC_UPDATE_LIBRARY, XBMC_HOST, XBMC_USERNAME, XBMC_PASSWORD, BACKLOG_FREQUENCY, DOWNLOADABLE_SEARCH_FREQUENCY, \
             USE_TRAKT, TRAKT_USERNAME, TRAKT_PASSWORD, TRAKT_API, TRAKT_REMOVE_SHOW_WATCHLIST, TRAKT_REMOVE_WATCHLIST, TRAKT_USE_WATCHLIST, TRAKT_METHOD_ADD, TRAKT_START_PAUSED, TRAKT_BLACKLIST_NAME, TRAKT_NUM_EP, traktCheckerScheduler, TRAKT_USE_RECOMMENDED, TRAKT_SYNC, TRAKT_DEFAULT_INDEXER, TRAKT_REMOVE_SERIESLIST, \
+            USE_IMDBWATCHLIST, IMDB_WATCHLISTCSV, imdbWatchlistScheduler, \
             USE_PLEX, PLEX_NOTIFY_ONSNATCH, PLEX_NOTIFY_ONDOWNLOAD, PLEX_NOTIFY_ONDOWNLOADABLE, PLEX_NOTIFY_ONSUBTITLEDOWNLOAD, PLEX_UPDATE_LIBRARY, \
             PLEX_SERVER_HOST, PLEX_HOST, PLEX_USERNAME, PLEX_PASSWORD, DEFAULT_BACKLOG_FREQUENCY, MIN_BACKLOG_FREQUENCY, BACKLOG_STARTUP, DEFAULT_DOWNLOADABLE_SEARCH_FREQUENCY, MIN_DOWNLOADABLE_SEARCH_FREQUENCY, DOWNLOADABLE_SEARCH_STARTUP, SKIP_REMOVED_FILES, \
             showUpdateScheduler, __INITIALIZED__, LAUNCH_BROWSER, UPDATE_SHOWS_ON_START, TRASH_REMOVE_SHOW, TRASH_ROTATE_LOGS, SORT_ARTICLE, showList, loadingShowList, \
@@ -562,6 +564,7 @@ def initialize(consoleLogging=True):
         CheckSection(CFG, 'Pushalot')
         CheckSection(CFG, 'Pushbullet')
         CheckSection(CFG, 'Subtitles')
+        CheckSection(CFG, 'IMDBWatchlist')
 
         # wanted branch
         BRANCH = check_setting_str(CFG, 'General', 'branch', '')
@@ -636,7 +639,7 @@ def initialize(consoleLogging=True):
         ANON_REDIRECT = check_setting_str(CFG, 'General', 'anon_redirect', 'http://dereferer.org/?')
         PROXY_SETTING = check_setting_str(CFG, 'General', 'proxy_setting', '')
         PROXY_INDEXERS = bool(check_setting_int(CFG, 'General', 'proxy_indexers', 1))
-        # attempt to help prevent users from breaking links by using a bad url 
+        # attempt to help prevent users from breaking links by using a bad url
         if not ANON_REDIRECT.endswith('?'):
             ANON_REDIRECT = ''
 
@@ -904,6 +907,10 @@ def initialize(consoleLogging=True):
         TRAKT_USE_RECOMMENDED = bool(check_setting_int(CFG, 'Trakt', 'trakt_use_recommended', 0))
         TRAKT_SYNC = bool(check_setting_int(CFG, 'Trakt', 'trakt_sync', 0))
         TRAKT_DEFAULT_INDEXER = check_setting_int(CFG, 'Trakt', 'trakt_default_indexer', 1)
+
+        ### IMDB Watchlist set default values for config
+        USE_IMDBWATCHLIST = bool(check_setting_int(CFG, 'IMDBWatchlist', 'use_imdbwatchlist', 0))
+        IMDB_WATCHLISTCSV = check_setting_str(CFG, 'IMDBWatchlist', 'imdb_watchlistcsv', '')
 
         CheckSection(CFG, 'pyTivo')
         USE_PYTIVO = bool(check_setting_int(CFG, 'pyTivo', 'use_pytivo', 0))
@@ -1241,6 +1248,11 @@ def initialize(consoleLogging=True):
                                                        threadName="FINDSUBTITLES",
                                                        silent=not USE_SUBTITLES)
 
+        imdbWatchlistScheduler = scheduler.Scheduler(imdbChecker.IMDB(),
+                                                    cycleTime=datetime.timedelta(hours=1),
+                                                    threadName="IMDBWATCHLIST",
+                                                    silent=not USE_IMDBWATCHLIST)
+
         showList = []
         loadingShowList = {}
 
@@ -1252,7 +1264,7 @@ def start():
     global __INITIALIZED__, backlogSearchScheduler, downloadableSearchScheduler, \
         showUpdateScheduler, versionCheckScheduler, showQueueScheduler, \
         properFinderScheduler, autoPostProcesserScheduler, searchQueueScheduler, \
-        subtitlesFinderScheduler, USE_SUBTITLES, traktCheckerScheduler, \
+        subtitlesFinderScheduler, USE_SUBTITLES, traktCheckerScheduler, imdbWatchlistScheduler, \
         dailySearchScheduler, events, started
 
     with INIT_LOCK:
@@ -1297,6 +1309,9 @@ def start():
             if USE_TRAKT:
                 traktCheckerScheduler.start()
 
+            if USE_IMDBWATCHLIST:
+                imdbWatchlistScheduler.start()
+
             started = True
 
 
@@ -1304,7 +1319,7 @@ def halt():
     global __INITIALIZED__, backlogSearchScheduler, downloadableSearchScheduler, \
         showUpdateScheduler, versionCheckScheduler, showQueueScheduler, \
         properFinderScheduler, autoPostProcesserScheduler, searchQueueScheduler, \
-        subtitlesFinderScheduler, traktCheckerScheduler, \
+        subtitlesFinderScheduler, traktCheckerScheduler, imdbWatchlistScheduler, \
         dailySearchScheduler, events, started
 
     with INIT_LOCK:
@@ -1382,6 +1397,14 @@ def halt():
                 logger.log(u"Waiting for the TRAKTCHECKER thread to exit")
                 try:
                     traktCheckerScheduler.join(10)
+                except:
+                    pass
+
+            if USE_IMDBWATCHLIST:
+                imdbWatchlistScheduler.stop.set()
+                logger.log(u"Waiting for the IMDBWATCHLIST thread to exit")
+                try:
+                    imdbWatchlistScheduler.join(10)
                 except:
                     pass
 
@@ -1812,6 +1835,10 @@ def save_config():
     new_config['Trakt']['trakt_use_recommended'] = int(TRAKT_USE_RECOMMENDED)
     new_config['Trakt']['trakt_sync'] = int(TRAKT_SYNC)
     new_config['Trakt']['trakt_default_indexer'] = int(TRAKT_DEFAULT_INDEXER)
+
+    new_config['IMDBWatchlist'] = {}
+    new_config['IMDBWatchlist']['use_imdbwatchlist'] = int(USE_IMDBWATCHLIST)
+    new_config['IMDBWatchlist']['imdb_watchlistcsv'] = IMDB_WATCHLISTCSV
 
     new_config['pyTivo'] = {}
     new_config['pyTivo']['use_pytivo'] = int(USE_PYTIVO)
