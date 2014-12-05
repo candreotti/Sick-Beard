@@ -590,13 +590,13 @@ class TraktChecker():
                 result=TraktCall("show/episode/watchlist/%API%", sickbeard.TRAKT_API, sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_PASSWORD, data)
                 if not result:
                     logger.log(u"Could not connect to trakt service, aborting add of episode to watchlist", logger.ERROR)
-                return
+                    return False
 
             elif update=="remove" and sickbeard.TRAKT_REMOVE_WATCHLIST:
                 result=TraktCall("show/episode/unwatchlist/%API%", sickbeard.TRAKT_API, sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_PASSWORD, data)
                 if not result:
                     logger.log(u"Could not connect to trakt service, aborting remove of episode form watchlist", logger.ERROR)
-                return
+                    return False
             self._getEpisodeWatchlist()
         elif type=="show":
             # traktv URL parameters
@@ -609,12 +609,12 @@ class TraktChecker():
                 result=TraktCall("show/watchlist/%API%", sickbeard.TRAKT_API, sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_PASSWORD, data)
                 if not result:
                     logger.log(u"Could not connect to trakt service, aborting add of show to watchlist", logger.ERROR)
-                return
+                    return False
             elif update=="remove" and sickbeard.TRAKT_REMOVE_SHOW_WATCHLIST:
             	result=TraktCall("show/unwatchlist/%API%", sickbeard.TRAKT_API, sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_PASSWORD, data)
                 if not result:
                     logger.log(u"Could not connect to trakt service, aborting remove of show form watchlist", logger.ERROR)
-                return
+                    return False
             self._getShowWatchlist()
         else:
             logger.log(u"Error invoking update_watchlist procedure, check parameter", logger.ERROR)
