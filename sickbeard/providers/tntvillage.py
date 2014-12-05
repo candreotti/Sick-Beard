@@ -279,17 +279,17 @@ class TNTVillageProvider(generic.TorrentProvider):
 
         checkName = lambda list, func: func([re.search(x, name, re.I) for x in list])
 
-        if checkName(["(tv|sat|hdtv|hdtvrip|hdtvmux|webdl|webrip|web-dl|web-dlmux|webdlmux|webmux|dlrip|dlmux|dtt|dttrip|bdmux)","(xvid|h264|divx)"], all) and not checkName(["(720|1080)[pi]"], all):
+        if checkName(["(tv|sat|hdtv|hdtvrip|hdtvmux|webdl|webrip|web-dl|web-dlmux|dl-webmux|webdlmux|webmux|dlrip|dlmux|dtt|dttrip|bdmux)","(xvid|h264|divx)"], all) and not checkName(["(720|1080)[pi]"], all) and not checkName(["BD"], all) and not checkName(["fullHD"], all):
             return Quality.SDTV
         elif checkName(["(dvdrip|dvdmux|dvd)"], any) and not checkName(["(720|1080)[pi]"], all) and not checkName(["(sat|tv)"], all) and not checkName(["BD"], all) and not checkName(["fullHD"], all):
             return Quality.SDDVD
-        elif checkName(["720p", "(h264|xvid|divx)"], all) and not checkName(["BD"], all) and not checkName(["webdl|webrip|web-dl|webdlmux|hdtvmux|sat|dlmux"], all):
+        elif checkName(["720p", "(h264|xvid|divx)"], all) and not checkName(["BD"], all) and not checkName(["webdl|webrip|web-dl|webdlmux|hdtvmux|sat|dlmux|dl-webmux"], all):
             return Quality.HDTV
-        elif checkName(["720p", "(h264|xvid|divx)"], all) and not checkName(["BD"], all) and checkName(["webdl|webrip|web-dl|webdlmux|hdtvmux|sat|dlmux"], all):
+        elif checkName(["720p", "(h264|xvid|divx)"], all) and not checkName(["BD"], all) and checkName(["webdl|webrip|web-dl|webdlmux|hdtvmux|sat|dlmux|dl-webmux"], all):
             return Quality.HDWEBDL
-        elif checkName(["fullHD", "(h264|xvid|divx)"], all) or checkName(["fullHD"], all) and not checkName(["BD"], all) and not checkName(["webdl|webrip|web-dl|webdlmux|hdtvmux|sat|dlmux"], all):
+        elif checkName(["fullHD", "(h264|xvid|divx)"], all) or checkName(["fullHD"], all) and not checkName(["BD"], all) and not checkName(["webdl|webrip|web-dl|webdlmux|hdtvmux|sat|dlmux|dl-webmux"], all):
             return Quality.FULLHDTV
-        elif checkName(["fullHD", "(h264|xvid|divx)"], all) or checkName(["fullHD"], all) and not checkName(["BD"], all) and checkName(["webdl|webrip|web-dl|webdlmux|hdtvmux|sat|dlmux"], all):
+        elif checkName(["fullHD", "(h264|xvid|divx)"], all) or checkName(["fullHD"], all) and not checkName(["BD"], all) and checkName(["webdl|webrip|web-dl|webdlmux|hdtvmux|sat|dlmux|dl-webmux"], all):
             return Quality.FULLHDWEBDL
         elif checkName(["BD", "720p", "(h264|xvid|divx)"], all) and not checkName(["fullHD"], all):
             return Quality.HDBLURAY
@@ -310,7 +310,7 @@ class TNTVillageProvider(generic.TorrentProvider):
         name = name.split('sub')[0] 
 
         if re.search("ita", name, re.I):
-            logger.log(u"Found Italian Language", logger.DEBUG)
+            logger.log(u"Found Italian Language: " + str(name), logger.DEBUG)
             is_italian=1
 
         return is_italian
@@ -465,11 +465,9 @@ class TNTVillageProvider(generic.TorrentProvider):
                 curEp = self.show.getEpisode(int(sqlshow["season"]), int(sqlshow["episode"]))
                 searchString = self._get_episode_search_strings(curEp, add_string='PROPER|REPACK')
 
-            searchString = self._get_episode_search_strings(curEp, add_string='PROPER|REPACK')
-
-            for item in self._doSearch(searchString[0]):
-                title, url = self._get_title_and_url(item)
-                results.append(classes.Proper(title, url, datetime.datetime.today(), self.show))
+                for item in self._doSearch(searchString[0]):
+                    title, url = self._get_title_and_url(item)
+                    results.append(classes.Proper(title, url, datetime.datetime.today(), self.show))
 
         return results
 

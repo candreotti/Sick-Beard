@@ -840,12 +840,15 @@ div.buttontext p {
 home_newShow.tmpl
 ========================================================================== */
 #addShowForm, #recommendedShowsForm {
-    margin-left: auto;
-    margin-right: auto;
+	width: 800px;
+	margin-left: auto;
+	margin-right: auto;
+	padding: 10px 0;
+	font-size:13px;
 }
 
 #newShowPortal {
-	width: 800px;
+	width: 960px;
 	padding: 10px 0;
 	margin-right: auto;
 	margin-left: auto;
@@ -872,7 +875,6 @@ home_addExistingShow.tmpl
 }
 
 ul#rootDirStaticList {
-    width: 90%;
     margin-right: auto;
     margin-left: auto;
     text-align: left;
@@ -1501,7 +1503,7 @@ config*.tmpl
 	margin-right: 6px;
 }
 
-#config .nocheck, #config div #customQuality, .metadataDiv, .providerDiv {
+#config .nocheck, #config div #customQuality, .metadataDiv {
 	padding-left: 20px;
 }
 
@@ -1704,6 +1706,10 @@ div.metadataDiv .disabled {
     margin: 6px 4px 0px 0px;
 }
 
+.warning {
+	border-color: #F89406;
+	background: url("../images/warning16.png") no-repeat right 5px center #fff;
+}
 
 /* =======================================================================
 manage*.tmpl
@@ -2459,6 +2465,11 @@ pre {
     border-color: #111;
 }
 
+.alert {
+	padding: 10px;
+	text-align: center;
+}
+
 /* =======================================================================
 input sizing (for config pages)
 ========================================================================== */
@@ -2609,7 +2620,7 @@ div.stepsguide {
 
 div.stepsguide .step {
 	float: left;
-	width: 266px;
+	width: 33%;
 	font: bold 24px Arial;
 }
 
@@ -2651,7 +2662,7 @@ div.formpaginate .prev, div.formpaginate .next {
 }
 
 .stepDiv {
-	padding: 15px;
+	padding: 15px 0;
 }
 
 /* step 3 related */
@@ -2664,13 +2675,14 @@ div.formpaginate .prev, div.formpaginate .next {
 
 #customQualityWrapper div.component-group-desc {
 	float: left;
-	width: 165px;
+	width: 172px;
+	margin-right: 10px;
 }	
 
 #customQualityWrapper div.component-group-desc p {
 	width: 85%;
 	margin: .8em 0;
-	font-size: 1.2em;
+	font-size: 1.13em;
 	color: #666;
 }
 
@@ -2957,4 +2969,99 @@ div.token-input-dropdown ul li.token-input-selected-dropdown-item {
 
 span.token-input-delete-token {
     margin: 0 1px;
+}
+
+/* =======================================================================
+jquery.confirm.css
+========================================================================== */
+
+#confirmOverlay{
+	width: 100%;
+	height: 100%;
+	position: fixed;
+	top: 0;
+	left: 0;
+	background: url('../images/bg.gif');
+	background: -moz-linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)) repeat-x rgba(0,0,0,0.5);
+	background:-webkit-gradient(linear, 0% 0%, 0% 100%, from(rgba(0,0,0,0.5)), to(rgba(0,0,0,0.5))) repeat-x rgba(0,0,0,0.5);
+	z-index: 100000;
+}
+
+#confirmBox{
+	background: #222;
+	width: 460px;
+	position: fixed;
+	left: 50%;
+	top: 50%;
+	margin: -130px 0 0 -230px;
+	border: 1px solid #111;
+    box-shadow: 0px 0px 12px 0px rgba(0, 0, 0, 0.175);
+}
+
+#confirmBox h1,
+#confirmBox p{
+	padding: 6px 10px;
+}
+
+#confirmBox h1 {
+    background-color: #15528F;
+	border-bottom: 1px solid #111;
+	color: #fff;
+    margin: 0;
+    font-size: 22px;
+    text-shadow: 0px 1px 1px rgba(0, 0, 0, 0.75);
+}
+
+#confirmBox p {
+	padding-top: 20px;
+    color: #fff;
+    text-shadow: 0px 1px 1px rgba(0, 0, 0, 0.75);
+}
+
+#confirmButtons {
+	padding: 15px 0;
+	text-align: center;
+}
+
+#confirmBox .button {
+	margin-right: 15px;
+	padding: 2px 20px;
+	text-decoration: none;
+	display: inline-block;
+	color: #fff;
+	text-align:center;
+	text-shadow: 0px 1px 1px rgba(0, 0, 0, 0.75);
+	background-clip: padding-box;
+	border: 1px solid #111;
+	border-radius: 3px;
+	cursor: pointer;
+	-webkit-box-sizing: border-box;
+	-moz-box-sizing: border-box;
+	box-sizing: border-box;
+	background-image: -webkit-linear-gradient(top, rgba(255,255,255,0.08),rgba(255,255,255,0) 50%,rgba(0,0,0,0) 51%,rgba(0,0,0,0.25));
+	background-image: -moz-linear-gradient(top, rgba(255,255,255,0.08),rgba(255,255,255,0) 50%,rgba(0,0,0,0) 51%,rgba(0,0,0,0.25));
+	background-image: -o-linear-gradient(top, rgba(255,255,255,0.08),rgba(255,255,255,0) 50%,rgba(0,0,0,0) 51%,rgba(0,0,0,0.25));
+	background-image: linear-gradient(to bottom, rgba(255,255,255,0.08),rgba(255,255,255,0) 50%,rgba(0,0,0,0) 51%,rgba(0,0,0,0.25));
+	-webkit-box-shadow: inset 0 1px rgba(255,255,255,0.1),inset 0 -1px 3px rgba(0,0,0,0.3),inset 0 0 0 1px rgba(255,255,255,0.08),0 1px 2px rgba(0,0,0,0.15);
+	box-shadow: inset 0 1px rgba(255,255,255,0.1),inset 0 -1px 3px rgba(0,0,0,0.3),inset 0 0 0 1px rgba(255,255,255,0.08),0 1px 2px rgba(0,0,0,0.15);
+}
+
+#confirmBox .button:last-child {	
+	margin-right:0;
+}
+
+#confirmBox .green {
+	background-color: #3F7636;
+}
+
+#confirmBox .green:hover {
+	background-color: #48873E;
+}
+
+#confirmBox .red {
+	background-color: #8D2D2B;
+}
+
+#confirmBox .red:hover {
+	background-color: #A13331;
 }

@@ -25,7 +25,7 @@
 		<link rel="stylesheet" type="text/css" href="$sbRoot/css/browser.css?$sbPID" />
 		<link rel="stylesheet" type="text/css" href="$sbRoot/css/lib/jquery-ui-1.10.4.custom.css?$sbPID" />
 		<link rel="stylesheet" type="text/css" href="$sbRoot/css/lib/jquery.qtip-2.0.1.min.css?$sbPID"/>
-		<link rel="stylesheet" type="text/css" href="$sbRoot/css/lib/jquery.pnotify.default.css?$sbPID" />
+		<link rel="stylesheet" type="text/css" href="$sbRoot/css/lib/pnotify.custom.min.css?$sbPID" />
 		<link rel="stylesheet" type="text/css" href="$sbRoot/css/style.css?$sbPID"/>
 		<link rel="stylesheet" type="text/css" href="$sbRoot/css/${sickbeard.THEME_NAME}.css?$sbPID" />
 
@@ -44,8 +44,6 @@
 		<script type="text/javascript" src="$sbRoot/js/lib/bootstrap.min.js?$sbPID"></script>
 		<script type="text/javascript" src="$sbRoot/js/lib/bootstrap-hover-dropdown.min.js?$sbPID"></script>
 		<script type="text/javascript" src="$sbRoot/js/lib/jquery-ui-1.10.4.custom.min.js?$sbPID"></script>
-		<script type="text/javascript" src="$sbRoot/js/lib/superfish-1.4.8.js?$sbPID"></script> <!-- Don't remove providers sort list breaks, needs to be fixed //-->
-		<script type="text/javascript" src="$sbRoot/js/lib/supersubs-0.2b.js?$sbPID"></script> <!-- Don't remove providers sort list breaks, needs to be fixed //-->
 		<script type="text/javascript" src="$sbRoot/js/lib/jquery.cookie.js?$sbPID"></script>
 		<script type="text/javascript" src="$sbRoot/js/lib/jquery.cookiejar.js?$sbPID"></script>
 		<script type="text/javascript" src="$sbRoot/js/lib/jquery.json-2.2.min.js?$sbPID"></script>
@@ -53,7 +51,7 @@
 		<script type="text/javascript" src="$sbRoot/js/lib/jquery.tablesorter-2.17.7.min.js?$sbPID"></script>
 		<script type="text/javascript" src="$sbRoot/js/lib/jquery.tablesorter.widgets-2.17.7.min.js?$sbPID"></script>
 		<script type="text/javascript" src="$sbRoot/js/lib/jquery.qtip-2.0.1.min.js?$sbPID"></script>
-		<script type="text/javascript" src="$sbRoot/js/lib/jquery.pnotify-1.0.2.min.js"></script>
+		<script type="text/javascript" src="$sbRoot/js/lib/pnotify.custom.min.js"></script>
 		<script type="text/javascript" src="$sbRoot/js/lib/jquery.form-3.35.js?$sbPID"></script>
 		<script type="text/javascript" src="$sbRoot/js/lib/jquery.ui.touch-punch-0.2.2.min.js?$sbPID"></script>
 		<script type="text/javascript" src="$sbRoot/js/lib/isotope.pkgd.min.js?$sbPID"></script>
@@ -67,9 +65,11 @@
 		#end if
 		<script type="text/javascript" charset="utf-8">
 		<!--
-			sbRoot = "$sbRoot"; // needed for browser.js & ajaxNotifications.js
+			sbRoot = '$sbRoot'; // needed for browser.js & ajaxNotifications.js
 			//HTML for scrolltopcontrol, which is auto wrapped in DIV w/ ID="topcontrol"
 			top_image_html = '<img src="$sbRoot/images/top.gif" width="31" height="11" alt="Jump to top" />';
+			themeSpinner = <%= '\'\'' if 'dark' != sickbeard.THEME_NAME else '\'-dark\'' %>;
+			anonURL = '<%= sickbeard.ANON_REDIRECT %>'
 		//-->
 		</script>
 		<script type="text/javascript" src="$sbRoot/js/lib/jquery.scrolltopcontrol-1.1.js"></script>
@@ -78,14 +78,14 @@
 		<script type="text/javascript">
 		<!--
 			function initActions() {
-				\$("#SubMenu a[href*='/home/restart/']").addClass('btn').html('<span class="submenu-icon-restart pull-left"></span> Restart');
-				\$("#SubMenu a[href*='/home/shutdown/']").addClass('btn').html('<span class="submenu-icon-shutdown pull-left"></span> Shutdown');
+				\$("#SubMenu a[href*='/home/restart/']").addClass('btn restart').html('<span class="submenu-icon-restart pull-left"></span> Restart');
+				\$("#SubMenu a[href*='/home/shutdown/']").addClass('btn shutdown').html('<span class="submenu-icon-shutdown pull-left"></span> Shutdown');
 				\$("#SubMenu a[href*='/home/logout/']").addClass('btn').html('<span class="ui-icon ui-icon-power pull-left"></span> Logout');
 				\$("#SubMenu a:contains('Edit')").addClass('btn').html('<span class="ui-icon ui-icon-pencil pull-left"></span> Edit');
 				\$("#SubMenu a:contains('Delete')").addClass('btn').html('<span class="ui-icon ui-icon-trash pull-left"></span> Delete');
-				\$("#SubMenu a:contains('Remove')").addClass('btn').html('<span class="ui-icon ui-icon-trash pull-left"></span> Remove');
-				\$("#SubMenu a:contains('Clear History')").addClass('btn confirm').html('<span class="ui-icon ui-icon-trash pull-left"></span> Clear History');
-				\$("#SubMenu a:contains('Trim History')").addClass('btn confirm').html('<span class="ui-icon ui-icon-trash pull-left"></span> Trim History');
+				\$("#SubMenu a:contains('Remove')").addClass('btn remove').html('<span class="ui-icon ui-icon-trash pull-left"></span> Remove');
+				\$("#SubMenu a:contains('Clear History')").addClass('btn clearhistory').html('<span class="ui-icon ui-icon-trash pull-left"></span> Clear History');
+				\$("#SubMenu a:contains('Trim History')").addClass('btn trimhistory').html('<span class="ui-icon ui-icon-trash pull-left"></span> Trim History');
 				\$("#SubMenu a[href$='/errorlogs/clearerrors/']").addClass('btn').html('<span class="ui-icon ui-icon-trash pull-left"></span> Clear Errors');
 				\$("#SubMenu a:contains('Re-scan')").addClass('btn').html('<span class="ui-icon ui-icon-refresh pull-left"></span> Re-scan');
 				\$("#SubMenu a:contains('Backlog Overview')").addClass('btn').html('<span class="ui-icon ui-icon-refresh pull-left"></span> Backlog Overview');
@@ -118,19 +118,12 @@
 				
 				\$("#NAV$topmenu").addClass("active");
 				
-				\$("a.confirm").bind("click",function(e) {
-					e.preventDefault();
-					var target = \$( this ).attr('href');
-					if ( confirm("Are you sure you want to " + \$(this).text() + "?") )
-						location.href = target;
-					return false;
-				});
-				
 				\$('.dropdown-toggle').dropdownHover();
 				
 			});
 		//-->
 		</script>
+        <script type="text/javascript" src="$sbRoot/js/confirmations.js?$sbPID"></script>
 	</head>
 
 	<body>
@@ -219,10 +212,11 @@
 							<a href="#" class="dropdown-toggle" data-toggle="dropdown"><img src="$sbRoot/images/menu/system18-2.png" class="navbaricon hidden-xs" /><b class="caret hidden-xs"></b><span class="visible-xs">System <b class="caret"></b></span></a>
 							<ul class="dropdown-menu">
 								<li><a href="$sbRoot/manage/manageSearches/forceVersionCheck"><i class="menu-icon-update"></i>&nbsp;Force Version Check</a></li>
-                                <li><a href="$sbRoot/home/restart/?pid=$sbPID" class="confirm"><i class="menu-icon-restart"></i>&nbsp;Restart</a></li>
-                                <li><a href="$sbRoot/home/shutdown/?pid=$sbPID" class="confirm"><i class="menu-icon-shutdown"></i>&nbsp;Shutdown</a></li>
+                                <li><a href="$sbRoot/home/restart/?pid=$sbPID" class="confirm restart"><i class="menu-icon-restart"></i>&nbsp;Restart</a></li>
+                                <li><a href="$sbRoot/home/shutdown/?pid=$sbPID" class="confirm shutdown"><i class="menu-icon-shutdown"></i>&nbsp;Shutdown</a></li>
 							</ul>
 						</li>
+                        <li id="donate"><a href="https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=gborri%40fastwebnet%2eit&lc=IT&item_name=I%20like%20this%20SickBeard&currency_code=EUR&bn=PP%2dDonationsBF%3abtn_donate_LG%2egif%3aNonHosted" rel="noreferrer" onclick="window.open('${sickbeard.ANON_REDIRECT}' + this.href); return false;"><img src="$sbRoot/images/paypal/btn_donate_LG.gif" alt="[donate]" /></a></li>
 					</ul>
 
 				</div><!-- /.navbar-collapse -->

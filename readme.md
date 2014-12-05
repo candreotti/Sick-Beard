@@ -1,7 +1,18 @@
 Sick Beard
 =====
+ Video File Manager for TV Shows, It watches for new episodes of your favorite shows and when they are posted it does its magic.
 
-This fork is based on mr-orange ThePirateBay branch https://github.com/mr-orange/Sick-Beard
+## Important
+ Please before using this with your existing database (sickbeard.db) please make a backup copy of it and delete any other database files such as cache.db and failed.db if present, we HIGHLY recommend starting out with no database files at all to make this a fresh start but the choice is at your own risk
+
+*Sick Beard  is currently in beta release stage. There may be severe bugs in it and at any given time it may not work at all.*
+
+There are currently a lot of changes that we're working on, which affect the very core of how Sick Beard works. We're doing this to lay the groundwork
+for making Sick Beard seriously more awesome, scalable and resource-friendly than it already is.
+ 
+While we're doing this, please expect Sick Beard do strange things, or maybe even not work at all. In any case, we need your help. If you see Sick Beard behaving weird, check if someone has reported it, and if not, open a new issue. There is little to no use to report "software should be stable". We will focus on that later, not now.
+
+!!! Please before using this with your existing database (sickbeard.db) please make a backup copy of it and delete any other database files such as cache.db and failed.db if present, we HIGHLY recommend starting out with no database files at all to make this a fresh start but the choice is at your own risk !!!
 
 Feature list of this branch:
 - Support for TNTVillage torrent provider
