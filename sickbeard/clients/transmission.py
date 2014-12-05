@@ -58,6 +58,7 @@ class TransmissionAPI(GenericClient):
     def _add_torrent_uri(self, result):
 
         is_not_downloading = False
+        transmission_error = False
 
         if not self._torrent_is_downloading(result):
 
@@ -72,6 +73,7 @@ class TransmissionAPI(GenericClient):
 
             if not self.response.json()['result'] == "success":
                 self.remove_torrent_downloaded(result.hash)
+                transmission_error = True
                 return False
 
             is_not_downloading = True
@@ -81,6 +83,7 @@ class TransmissionAPI(GenericClient):
 
         if not file_list:
             self.remove_torrent_downloaded(result.hash)
+            transmission_error = True
             return False
 
         wantedFile = []
@@ -97,10 +100,12 @@ class TransmissionAPI(GenericClient):
                 except InvalidNameException:
                     logger.log(u"Unable to parse the filename " + str(name_file["name"]) + " into a valid episode", logger.DEBUG)
                     self.remove_torrent_downloaded(result.hash)
+                    transmission_error = True
                     return False
                 except InvalidShowException:
                     logger.log(u"Unable to parse the filename " + str(name_file["name"]) + " into a valid show", logger.DEBUG)
                     self.remove_torrent_downloaded(result.hash)
+                    transmission_error = True
                     return False
 
                 if not parse_result or not parse_result.series_name:
@@ -125,6 +130,7 @@ class TransmissionAPI(GenericClient):
 
                 if not self.response.json()['result'] == "success":
                     self.remove_torrent_downloaded(result.hash)
+                    transmission_error = True
                     return False
         else:
 
@@ -139,7 +145,24 @@ class TransmissionAPI(GenericClient):
 
                 if not self.response.json()['result'] == "success":
                     self.remove_torrent_downloaded(result.hash)
+                    transmission_error = True
                     return False
+
+        if transmission_error:
+
+            self.remove_torrent_downloaded(result.hash)
+
+            arguments = {'filename': result.url,
+                         'paused': 1 if sickbeard.TORRENT_PAUSED else 0,
+                         'download-dir': sickbeard.TORRENT_PATH
+            }
+            post_data = json.dumps({'arguments': arguments,
+                                    'method': 'torrent-add',
+            })
+            self._request(method='post', data=post_data)
+
+            if not self.response.json()['result'] == "success":
+                return False
 
         return True
 
@@ -175,6 +198,7 @@ class TransmissionAPI(GenericClient):
 
             if not self.response.json()['result'] == "success":
                 self.remove_torrent_downloaded(result.hash)
+                transmission_error = True
                 return False
 
             is_not_downloading = True
@@ -184,6 +208,7 @@ class TransmissionAPI(GenericClient):
 
         if not file_list:
             self.remove_torrent_downloaded(result.hash)
+            transmission_error = True
             return False
 
         wantedFile = []
@@ -200,10 +225,12 @@ class TransmissionAPI(GenericClient):
                 except InvalidNameException:
                     logger.log(u"Unable to parse the filename " + str(name_file["name"]) + " into a valid episode", logger.DEBUG)
                     self.remove_torrent_downloaded(result.hash)
+                    transmission_error = True
                     return False
                 except InvalidShowException:
                     logger.log(u"Unable to parse the filename " + str(name_file["name"]) + " into a valid show", logger.DEBUG)
                     self.remove_torrent_downloaded(result.hash)
+                    transmission_error = True
                     return False
 
                 if not parse_result or not parse_result.series_name:
@@ -228,6 +255,7 @@ class TransmissionAPI(GenericClient):
 
                 if not self.response.json()['result'] == "success":
                     self.remove_torrent_downloaded(result.hash)
+                    transmission_error = True
                     return False
         else:
 
@@ -242,6 +270,7 @@ class TransmissionAPI(GenericClient):
 
                 if not self.response.json()['result'] == "success":
                     self.remove_torrent_downloaded(result.hash)
+                    transmission_error = True
                     return False
 
         return True

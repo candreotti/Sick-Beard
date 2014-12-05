@@ -357,7 +357,6 @@ class TraktChecker():
 
             for x in range(0,num_of_ep):
 
-                logger.log(u"x: " + str(x) + " , s: " + str(s) + " , e: " + str(e), logger.DEBUG)
                 last_s = [last_x_s for last_x_s in last_per_season if last_x_s['season'] == s]
                 if last_s is None:
                     break
