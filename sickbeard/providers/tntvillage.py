@@ -310,7 +310,7 @@ class TNTVillageProvider(generic.TorrentProvider):
         name = name.split('sub')[0] 
 
         if re.search("ita", name, re.I):
-            logger.log(u"Found Italian Language: " + str(name), logger.DEBUG)
+            logger.log(u"Found Italian Language", logger.DEBUG)
             is_italian=1
 
         return is_italian
