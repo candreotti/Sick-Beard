@@ -175,6 +175,9 @@ def snatchEpisode(result, endStatus=SNATCHED):
         myDB = db.DBConnection()
         myDB.mass_action(sql_l)
 
+    if not sickbeard.showQueueScheduler.action.isBeingUpdated(result.show):
+        sickbeard.showQueueScheduler.action.updateShow(result.show, True)
+
     return True
 
 def downloadableEpisode(result, endStatus=DOWNLOADABLE):
