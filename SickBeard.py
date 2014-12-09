@@ -25,6 +25,7 @@ import signal
 import sys
 import shutil
 import subprocess
+import traceback
 
 if sys.version_info < (2, 6):
     print "Sorry, requires Python 2.6 or 2.7."
@@ -67,6 +68,7 @@ throwaway = datetime.datetime.strptime('20110101', '%Y%m%d')
 
 signal.signal(signal.SIGINT, sickbeard.sig_handler)
 signal.signal(signal.SIGTERM, sickbeard.sig_handler)
+
 
 class SickBeard(object):
     def __init__(self):
@@ -129,9 +131,6 @@ class SickBeard(object):
 
         try:
             locale.setlocale(locale.LC_ALL, "")
-        except (locale.Error, IOError):
-            pass
-        try:
             sickbeard.SYS_ENCODING = locale.getpreferredencoding()
         except (locale.Error, IOError):
             pass
@@ -148,9 +147,8 @@ class SickBeard(object):
             # On non-unicode builds this will raise an AttributeError, if encoding type is not valid it throws a LookupError
             sys.setdefaultencoding(sickbeard.SYS_ENCODING)
         except:
-            print 'Sorry, you MUST add the SickBeard folder to the PYTHONPATH environment variable'
-            print 'or find another way to force Python to use ' + sickbeard.SYS_ENCODING + ' for string encoding.'
-            sys.exit(1)
+            sys.exit("Sorry, you MUST add the SickBeard folder to the PYTHONPATH environment variable\n" +
+                     "or find another way to force Python to use " + sickbeard.SYS_ENCODING + " for string encoding.")
 
         # Need console logging for SickBeard.py and SickBeard-console.exe
         self.consoleLogging = (not hasattr(sys, "frozen")) or (sickbeard.MY_NAME.lower().find('-console') > 0)
@@ -334,6 +332,16 @@ class SickBeard(object):
         else:
             self.log_dir = None
 
+        # sickbeard.WEB_HOST is available as a configuration value in various
+        # places but is not configurable. It is supported here for historic reasons.
+        if sickbeard.WEB_HOST and sickbeard.WEB_HOST != '0.0.0.0':
+            self.webhost = sickbeard.WEB_HOST
+        else:
+            if sickbeard.WEB_IPV6:
+                self.webhost = '::'
+            else:
+                self.webhost = '0.0.0.0'
+
         # web server options
         self.web_options = {
             'port': int(self.startPort),
@@ -469,9 +477,9 @@ class SickBeard(object):
                 sickbeard.showList.append(curShow)
             except Exception, e:
                 logger.log(
-                    u"There was an error creating the show in " + sqlShow["location"] + ": " + str(e).decode('utf-8',
-                                                                                                             'replace'),
+                    u"There was an error creating the show in " + sqlShow["location"] + ": " + str(e).decode('utf-8'),
                     logger.ERROR)
+                logger.log(traceback.format_exc(), logger.DEBUG)
 
     def restore(self, srcDir, dstDir):
         try:

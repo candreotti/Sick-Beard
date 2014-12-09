@@ -92,12 +92,12 @@ class TraktChecker():
     def findShow(self, indexer, indexerid):
         library = TraktCall("user/library/shows/all.json/%API%/" + sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_API, sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_PASSWORD)
 
-        if library == 'NULL':
-            logger.log(u"No shows found in your library, aborting library update", logger.DEBUG)
-            return
-
         if not library:
             logger.log(u"Could not connect to trakt service, aborting library check", logger.ERROR)
+            return
+
+        if not len(library):
+            logger.log(u"No shows found in your library, aborting library update", logger.DEBUG)
             return
 
         return filter(lambda x: int(indexerid) in [int(x['tvdb_id']) or 0, int(x['tvrage_id'])] or 0, library)
@@ -144,7 +144,7 @@ class TraktChecker():
     def _getEpisodeWatchlist(self):
         
         self.EpisodeWatchlist = TraktCall("user/watchlist/episodes.json/%API%/" + sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_API, sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_PASSWORD)
-        if self.EpisodeWatchlist is None:
+        if not self.EpisodeWatchlist:
             logger.log(u"Could not connect to trakt service, cannot download Episode Watchlist", logger.ERROR)
             return False
 
@@ -153,7 +153,7 @@ class TraktChecker():
     def _getShowWatchlist(self):
 
         self.ShowWatchlist = TraktCall("user/watchlist/shows.json/%API%/" + sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_API, sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_PASSWORD)
-        if self.ShowWatchlist is None:
+        if not self.ShowWatchlist:
             logger.log(u"Could not connect to trakt service, cannot download Show Watchlist", logger.ERROR)
             return False
 
@@ -162,7 +162,7 @@ class TraktChecker():
     def _getShowProgress(self):
 
         self.ShowProgress = TraktCall("user/progress/watched.json/%API%/" + sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_API, sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_PASSWORD)
-        if self.ShowProgress is None:
+        if not self.ShowProgress:
             logger.log(u"Could not connect to trakt service, cannot download show progress", logger.ERROR)
             return False
 
@@ -171,7 +171,7 @@ class TraktChecker():
     def _getEpisodeWatched(self):
 
         self.EpisodeWatched = TraktCall("user/library/shows/watched.json/%API%/" + sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_API, sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_PASSWORD)
-        if self.EpisodeWatched is None:
+        if not self.EpisodeWatched:
             logger.log(u"Could not connect to trakt service, cannot download show from library", logger.ERROR)
             return False
 
@@ -202,9 +202,11 @@ class TraktChecker():
 
         if sickbeard.TRAKT_REMOVE_WATCHLIST and sickbeard.USE_TRAKT:
             logger.log(u"Start looking if some episode has to be removed from watchlist", logger.DEBUG)
-            if self.EpisodeWatchlist == 'NULL':
-                logger.log(u"Episode watchlist is empty", logger.DEBUG)
-                return True 
+
+            if not len(self.EpisodeWatchlist):
+                logger.log(u"No shows found in your watchlist, aborting watchlist update", logger.DEBUG)
+                return True
+
             for show in self.EpisodeWatchlist:
                 for episode in show["episodes"]:
                     newShow = helpers.findCertainShowFromIMDB(sickbeard.showList, show["imdb_id"])
@@ -229,9 +231,11 @@ class TraktChecker():
 
         if sickbeard.TRAKT_REMOVE_SHOW_WATCHLIST and sickbeard.USE_TRAKT:
             logger.log(u"Start looking if some show has to be removed from watchlist", logger.DEBUG)
-            if self.ShowWatchlist == 'NULL':
-                logger.log(u"Show watchlist is empty", logger.WARNING)
-                return True 
+
+            if not len(self.ShowWatchlist):
+                logger.log(u"No shows found in your watchlist, aborting watchlist update", logger.DEBUG)
+                return True
+
             for show in self.ShowWatchlist:
                 newShow = helpers.findCertainShowFromIMDB(sickbeard.showList, show["imdb_id"])
                 if (newShow is not None) and (newShow.status == "Ended"):
@@ -289,7 +293,7 @@ class TraktChecker():
         num_of_download = sickbeard.TRAKT_NUM_EP
 
         #if num_of_download == 0 or self.EpisodeWatched == 'NULL':
-        if self.EpisodeWatched == 'NULL':
+        if not len(self.EpisodeWatched):
             return True
 
         logger.log(u"Start looking if having " + str(num_of_download) + " episode not watched", logger.DEBUG)
@@ -392,9 +396,11 @@ class TraktChecker():
 
     def updateShows(self):
         logger.log(u"Start looking if some show need to be added to SickBeard", logger.DEBUG)
-        if self.ShowWatchlist == 'NULL':
-            logger.log(u"Show watchlist is empty", logger.DEBUG)
-            return True
+
+        if not len(self.ShowWatchlist):
+            logger.log(u"No shows found in your watchlist, aborting watchlist update", logger.DEBUG)
+            return
+
         for show in self.ShowWatchlist:
             indexer = int(sickbeard.TRAKT_DEFAULT_INDEXER)
             if indexer == INDEXER_TVRAGE:
@@ -425,11 +431,12 @@ class TraktChecker():
         Sets episodes to wanted that are in trakt watchlist
         """
         logger.log(u"Start looking if some episode in WatchList has to be set WANTED", logger.DEBUG)
-        if self.EpisodeWatchlist == 'NULL':
-            logger.log(u"Episode watchlist is empty", logger.DEBUG)
-            return 
 
-        for show in self.EpisodeWatchlist:
+        if not len(self.EpisodeWatchlist):
+            logger.log(u"No shows found in your watchlist, aborting watchlist update", logger.DEBUG)
+            return
+
+        for show in watchlist:
             indexer = int(sickbeard.TRAKT_DEFAULT_INDEXER)
             if indexer == INDEXER_TVRAGE:
                 indexer_id = int(show["tvrage_id"])
@@ -557,8 +564,8 @@ class TraktChecker():
         logger.log(u"Checking if show: Indexer " + str(show_obj.indexer) + "indexer_id " + str(show_obj.indexerid) + ", Title " + str(show_obj.name) + " is completely watched", logger.DEBUG)
 
         found = False
-        if self.ShowProgress == 'NULL':
-            logger.log(u"Show progress is empty", logger.DEBUG)
+        if not len(self.ShowProgress):
+            logger.log(u"No shows found in your watchlist, aborting watchlist update", logger.DEBUG)
             return found 
 
         for pshow in self.ShowProgress:
@@ -624,8 +631,8 @@ class TraktChecker():
     def show_in_watchlist (self, show_obj):
 
         found = False
-        if self.ShowWatchlist == 'NULL':
-            logger.log(u"Show watchlist is empty", logger.DEBUG)
+        if not len(self.ShowWatchlist):
+            logger.log(u"No shows found in your watchlist, aborting watchlist update", logger.DEBUG)
             return found 
 
         for show in self.ShowWatchlist:
@@ -644,8 +651,8 @@ class TraktChecker():
     def episode_in_watchlist (self, show_obj, s, e):
 
         found = False
-        if self.EpisodeWatchlist == 'NULL':
-            logger.log(u"Episode watchlist is empty", logger.DEBUG)
+        if not len(self.EpisodeWatchlist):
+            logger.log(u"No shows found in your watchlist, aborting watchlist update", logger.DEBUG)
             return found 
 
         for show in self.EpisodeWatchlist:

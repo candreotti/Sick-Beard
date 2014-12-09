@@ -29,6 +29,7 @@ import sickbeard
 
 from sickbeard import logger, common
 from sickbeard import db
+from sickbeard.encodingKludge import toUnicode
 from sickbeard.exceptions import ex
 
 
@@ -50,7 +51,7 @@ class EmailNotifier:
         ep_name: The name of the episode that was snatched
         title: The title of the notification (optional)
         """
-        ep_name = ep_name.encode('utf-8', 'replace')
+        ep_name = toUnicode(ep_name)
 
         if not sickbeard.USE_EMAIL:
             logger.log("Notification for Email not enabled, skipping this notification", logger.DEBUG)
@@ -89,7 +90,7 @@ class EmailNotifier:
         ep_name: The name of the episode that was downloaded
         title: The title of the notification (optional)
         """
-        ep_name = ep_name.encode('utf-8', 'replace')
+        ep_name = toUnicode(ep_name)
 
         if not sickbeard.USE_EMAIL:
             logger.log("Notification for Email not enabled, skipping this notification", logger.DEBUG)
@@ -167,7 +168,7 @@ class EmailNotifier:
         ep_name: The name of the episode that was downloaded
         lang: Subtitle language wanted
         """
-        ep_name = ep_name.encode('utf-8', 'replace')
+        ep_name = toUnicode(ep_name)
 
         if not sickbeard.USE_EMAIL:
             logger.log("Notification for Email not enabled, skipping this notification", logger.DEBUG)
@@ -248,7 +249,7 @@ class EmailNotifier:
             return False
 
     def _parseEp(self, ep_name):
-        ep_name = ep_name.encode('utf-8', 'replace')
+        ep_name = toUnicode(ep_name)
 
         sep = " - "
         titles = ep_name.split(sep)

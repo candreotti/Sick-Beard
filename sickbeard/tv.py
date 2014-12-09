@@ -98,7 +98,7 @@ class TVShow(object):
         self._scene = 0
         self._rls_ignore_words = ""
         self._rls_require_words = ""
-
+        self._default_ep_status = ""
         self.dirty = True
 
         self._location = ""
@@ -140,6 +140,7 @@ class TVShow(object):
     scene = property(lambda self: self._scene, dirty_setter("_scene"))
     rls_ignore_words = property(lambda self: self._rls_ignore_words, dirty_setter("_rls_ignore_words"))
     rls_require_words = property(lambda self: self._rls_require_words, dirty_setter("_rls_require_words"))
+    default_ep_status = property(lambda self: self._default_ep_status, dirty_setter("_default_ep_status"))
 
     @property
     def is_anime(self):
@@ -578,7 +579,6 @@ class TVShow(object):
             myDB = db.DBConnection()
             myDB.mass_action(sql_l)
 
-
         # Done updating save last update date
         self.last_update_indexer = datetime.date.today().toordinal()
         self.saveToDB()
@@ -771,9 +771,11 @@ class TVShow(object):
             self.status = sqlResults[0]["status"]
             if not self.status:
                 self.status = ""
+
             self.airs = sqlResults[0]["airs"]
             if not self.airs:
                 self.airs = ""
+
             self.startyear = sqlResults[0]["startyear"]
             if not self.startyear:
                 self.startyear = 0
@@ -825,6 +827,10 @@ class TVShow(object):
 
             self.rls_ignore_words = sqlResults[0]["rls_ignore_words"]
             self.rls_require_words = sqlResults[0]["rls_require_words"]
+
+            self.default_ep_status = sqlResults[0]["default_ep_status"]
+            if not self.default_ep_status:
+                self.default_ep_status = ""
 
             if not self.imdbid:
                 self.imdbid = sqlResults[0]["imdb_id"]
@@ -1164,7 +1170,8 @@ class TVShow(object):
                         "imdb_id": self.imdbid,
                         "last_update_indexer": self.last_update_indexer,
                         "rls_ignore_words": self.rls_ignore_words,
-                        "rls_require_words": self.rls_require_words
+                        "rls_require_words": self.rls_require_words,
+                        "default_ep_status": self.default_ep_status
         }
 
         myDB = db.DBConnection()
@@ -1802,9 +1809,9 @@ class TVEpisode(object):
                 if self.status == UNAIRED:
                     self.status = WANTED
 
-                # if we somehow are still UNKNOWN then just skip it
+                # if we somehow are still UNKNOWN then just use the shows defined default status
                 elif self.status == UNKNOWN:
-                    self.status = SKIPPED
+                    self.status = self.show.default_ep_status
 
                 else:
                     logger.log(
@@ -2086,7 +2093,6 @@ class TVEpisode(object):
             '%SN S%0SE%E',
             '%SN S%SE%E',
             '%SN S%0SE%0E'
-
         ]
 
         strings = []
@@ -2124,7 +2130,6 @@ class TVEpisode(object):
 
         if len(self.relatedEps) == 0:
             goodName = self.name
-
         else:
             goodName = ''
 
@@ -2556,7 +2561,7 @@ class TVEpisode(object):
         if airs:
             hr = int(airs.group(1))
             hr = (12 + hr, hr)[None is airs.group(3)]
-            hr = (hr, hr - 12)[0 == hr % 12]
+            hr = (hr, hr - 12)[0 == hr % 12 and 0 != hr]
             min = int((airs.group(2), min)[None is airs.group(2)])
         airtime = datetime.time(hr, min)
 
