@@ -175,7 +175,7 @@ def snatchEpisode(result, endStatus=SNATCHED):
         myDB = db.DBConnection()
         myDB.mass_action(sql_l)
 
-    if not sickbeard.showQueueScheduler.action.isBeingUpdated(result.show) and result.show.status = "Continuing":
+    if not sickbeard.showQueueScheduler.action.isBeingUpdated(result.show) and result.show.status == "Continuing":
         sickbeard.showQueueScheduler.action.updateShow(result.show, True)
 
     return True
