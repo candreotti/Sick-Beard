@@ -288,7 +288,7 @@ class TraktChecker():
 
         if not sickbeard.USE_TRAKT:
             logger.log(u"Trakt integrazione disabled, quit", logger.DEBUG)
-            return
+            return True
             
         num_of_download = sickbeard.TRAKT_NUM_EP
 
@@ -371,16 +371,14 @@ class TraktChecker():
                             if newShow is not None:
                                 self.setEpisodeToWanted(newShow, s, e)
                                 if not self.episode_in_watchlist(newShow, s, e):
-                                    if not self.update_watchlist("episode", "add", newShow, s, e):
-                                        return False
+                                    self.update_watchlist("episode", "add", newShow, s, e)
                                 wanted = True
                             else:
                                 self.todoWanted.append(int(indexer_id), s, e)
                     else:
                         self.setEpisodeToIgnored(newShow, s, e)
-                        if self.episode_in_watchlist(newShow, s, e):
-                            if not self.update_watchlist("episode", "remove", newShow, s, e):
-                                return False
+                        if not self.episode_in_watchlist(newShow, s, e):
+                            self.update_watchlist("episode", "remove", newShow, s, e)
 
                     if (s*100+e) == (int(last_s[0]['season'])*100+int(last_s[0]['episodes'])):
                         s = s + 1
@@ -436,7 +434,7 @@ class TraktChecker():
             logger.log(u"No shows found in your watchlist, aborting watchlist update", logger.DEBUG)
             return
 
-        for show in watchlist:
+        for show in self.EpisodeWatchlist:
             indexer = int(sickbeard.TRAKT_DEFAULT_INDEXER)
             if indexer == INDEXER_TVRAGE:
                 indexer_id = int(show["tvrage_id"])
