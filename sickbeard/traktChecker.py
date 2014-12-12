@@ -416,8 +416,7 @@ class TraktChecker():
                 if newShow is not None:
                     self.setEpisodeToWanted(newShow, 1, 1)
                     if not self.episode_in_watchlist(newShow, 1, 1):
-                        if not self.update_watchlist("episode", "add", newShow, 1, 1):
-                            return False
+                        self.update_watchlist("episode", "add", newShow, 1, 1)
                     self.startBacklog(newShow)
                 else:
                     self.todoWanted.append((indexer_id, 1, 1))
@@ -452,8 +451,7 @@ class TraktChecker():
                             if epObj.status != WANTED:
                                 self.setEpisodeToWanted(newShow, episode["season"], episode["number"])
                                 if not self.episode_in_watchlist(newShow, episode["season"], episode["number"]):
-                                    if not self.update_watchlist("episode", "add", newShow, episode["season"], episode["number"]):
-                                        return False
+                                    self.update_watchlist("episode", "add", newShow, episode["season"], episode["number"])
                                 self.startBacklog(newShow)
                         else:
                             self.todoWanted.append((indexer_id, episode["season"], episode["number"]))
@@ -541,8 +539,7 @@ class TraktChecker():
             self.todoWanted.remove(episode)
             self.setEpisodeToWanted(show, episode[1], episode[2])
             if not self.episode_in_watchlist(show, episode[1], episode[2]):
-                if not self.update_watchlist("episode", "add", show,  episode[1], episode[2]):
-                    return False
+                self.update_watchlist("episode", "add", show,  episode[1], episode[2]):
             self.todoWanted.remove(episode)
         self.startBacklog(show)
 
