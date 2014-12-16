@@ -141,6 +141,31 @@ class TraktChecker():
             TraktCall("show/library/%API%", sickbeard.TRAKT_API, sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_PASSWORD,
                       data)
 
+    def addEpisodeToTraktLibrary(self, epObj):
+        """
+        Sends a request to trakt indicating that the given episode is part of our library.
+
+        epObj: The TVEpisode object to add to trakt
+        """
+
+        data = {}
+
+        # URL parameters
+        data['tvdb_id'] = helpers.mapIndexersToShow(epObj.show)[1]
+        data['title'] = epObj.show.name
+        data['year'] = epObj.show.startyear
+        dat['episodes'] = [
+            {
+                "season": epObj.season,
+                "episode": epObj.episode
+            }
+        ]
+
+        if len(data):
+            logger.log(u"Adding episode - show: " + str(epObj.show.name) + " , episode: " + str(epObj.season) + "x" + str(epObj.episode) + " - " + str(epObj.name) + "  to trakt.tv library", logger.DEBUG)
+            TraktCall("show/library/%API%", sickbeard.TRAKT_API, sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_PASSWORD,
+                      data)
+
     def _getEpisodeWatchlist(self):
         
         self.EpisodeWatchlist = TraktCall("user/watchlist/episodes.json/%API%/" + sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_API, sickbeard.TRAKT_USERNAME, sickbeard.TRAKT_PASSWORD)
@@ -539,7 +564,7 @@ class TraktChecker():
             self.todoWanted.remove(episode)
             self.setEpisodeToWanted(show, episode[1], episode[2])
             if not self.episode_in_watchlist(show, episode[1], episode[2]):
-                self.update_watchlist("episode", "add", show,  episode[1], episode[2]):
+                self.update_watchlist("episode", "add", show,  episode[1], episode[2])
             self.todoWanted.remove(episode)
         self.startBacklog(show)
 
