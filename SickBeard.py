@@ -332,16 +332,6 @@ class SickBeard(object):
         else:
             self.log_dir = None
 
-        # sickbeard.WEB_HOST is available as a configuration value in various
-        # places but is not configurable. It is supported here for historic reasons.
-        if sickbeard.WEB_HOST and sickbeard.WEB_HOST != '0.0.0.0':
-            self.webhost = sickbeard.WEB_HOST
-        else:
-            if sickbeard.WEB_IPV6:
-                self.webhost = '::'
-            else:
-                self.webhost = '0.0.0.0'
-
         # web server options
         self.web_options = {
             'port': int(self.startPort),
